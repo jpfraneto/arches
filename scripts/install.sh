@@ -277,6 +277,7 @@ ARCH_SUPPORT_EMAIL=$ARCH_SUPPORT_EMAIL
 ARCHES_API_IMAGE=ghcr.io/jpfraneto/arches-api:latest
 ARCHES_WEB_IMAGE=ghcr.io/jpfraneto/arches-web:latest
 HYPERSNAP_LITE_IMAGE=ghcr.io/jpfraneto/hypersnap-lite:latest
+HYPERSNAP_LITE_PLATFORM=linux/amd64
 ARCHES_HOST_BIND=127.0.0.1
 ARCHES_WEB_PORT=3000
 ARCHES_API_PORT=3001

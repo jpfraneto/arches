@@ -53,11 +53,13 @@ The generated `.env` pins the image contract to GHCR:
 ARCHES_API_IMAGE=ghcr.io/jpfraneto/arches-api:latest
 ARCHES_WEB_IMAGE=ghcr.io/jpfraneto/arches-web:latest
 HYPERSNAP_LITE_IMAGE=ghcr.io/jpfraneto/hypersnap-lite:latest
+HYPERSNAP_LITE_PLATFORM=linux/amd64
 ```
 
 This repo publishes `arches-api` and `arches-web` from GitHub Actions using
 `GITHUB_TOKEN` with package write permissions. Hypersnap Lite remains a separate
-image consumed through its Docker image/config contract.
+image consumed through its Docker image/config contract. Its default platform is
+set explicitly so local arm64 machines can still run the current amd64 image.
 
 ## Modes
 

@@ -7,12 +7,14 @@ Arches must consume Hypersnap Lite through its Docker image/config contract:
 
 ```env
 HYPERSNAP_LITE_IMAGE=ghcr.io/jpfraneto/hypersnap-lite:latest
+HYPERSNAP_LITE_PLATFORM=linux/amd64
 ```
 
 The Docker Compose template uses:
 
 ```yaml
 image: ${HYPERSNAP_LITE_IMAGE:-ghcr.io/jpfraneto/hypersnap-lite:latest}
+platform: ${HYPERSNAP_LITE_PLATFORM:-linux/amd64}
 ```
 
 ## Boundary

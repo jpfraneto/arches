@@ -68,6 +68,7 @@ __ARCHES_WEB_PORTS__
 
   hypersnap-lite:
     image: ${HYPERSNAP_LITE_IMAGE:-ghcr.io/jpfraneto/hypersnap-lite:latest}
+    platform: ${HYPERSNAP_LITE_PLATFORM:-linux/amd64}
     restart: unless-stopped
     env_file:
       - .env
