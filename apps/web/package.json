@@ -1,0 +1,12 @@
+{
+  "name": "@arches/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --hot server.ts",
+    "start": "bun run server.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14"
+  }
+}

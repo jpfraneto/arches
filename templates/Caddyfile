@@ -1,0 +1,19 @@
+{
+	email __ARCH_SUPPORT_EMAIL__
+}
+
+__ARCH_DOMAIN__ {
+	encode zstd gzip
+
+	handle /health {
+		reverse_proxy arches-api:3000
+	}
+
+	handle /api/* {
+		reverse_proxy arches-api:3000
+	}
+
+	handle {
+		reverse_proxy arches-web:3000
+	}
+}

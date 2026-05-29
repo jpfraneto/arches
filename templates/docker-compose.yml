@@ -1,0 +1,103 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - arches-api
+      - arches-web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - arches
+
+  arches-api:
+    image: ${ARCHES_API_IMAGE:-ghcr.io/jpfraneto/arches-api:placeholder}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: "3000"
+      DATABASE_URL: postgres://arches:${POSTGRES_PASSWORD}@postgres:5432/arches
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      HYPERSNAP_LITE_URL: http://hypersnap-lite:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      hypersnap-lite:
+        condition: service_started
+    expose:
+      - "3000"
+    networks:
+      - arches
+
+  arches-web:
+    image: ${ARCHES_WEB_IMAGE:-ghcr.io/jpfraneto/arches-web:placeholder}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: "3000"
+      API_ORIGIN: http://arches-api:3000
+    depends_on:
+      - arches-api
+    expose:
+      - "3000"
+    networks:
+      - arches
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: arches
+      POSTGRES_USER: arches
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arches -d arches"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - arches
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - arches
+
+  hypersnap-lite:
+    image: ${HYPERSNAP_LITE_IMAGE}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: "3000"
+      ARCH_SLUG: ${ARCH_SLUG}
+      ARCH_DOMAIN: ${ARCH_DOMAIN}
+    expose:
+      - "3000"
+    networks:
+      - arches
+
+volumes:
+  caddy_data:
+  caddy_config:
+  postgres_data:
+  redis_data:
+
+networks:
+  arches:
+    name: arches-${ARCH_SLUG}

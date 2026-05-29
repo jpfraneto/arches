@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Arches</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        background: #f6f7f9;
+        color: #15171a;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+      }
+
+      main {
+        width: min(760px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 32px 0;
+      }
+
+      header {
+        margin-bottom: 24px;
+      }
+
+      h1 {
+        margin: 0 0 4px;
+        font-size: 32px;
+        line-height: 1.1;
+      }
+
+      .domain {
+        margin: 0;
+        color: #5d6470;
+      }
+
+      form,
+      .cast {
+        background: #ffffff;
+        border: 1px solid #dde1e7;
+        border-radius: 8px;
+      }
+
+      form {
+        display: grid;
+        gap: 12px;
+        padding: 16px;
+        margin-bottom: 20px;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        font-weight: 600;
+      }
+
+      textarea,
+      input {
+        width: 100%;
+        border: 1px solid #c8ced8;
+        border-radius: 6px;
+        padding: 10px 12px;
+        font: inherit;
+        background: #ffffff;
+      }
+
+      textarea {
+        min-height: 112px;
+        resize: vertical;
+      }
+
+      button {
+        justify-self: start;
+        border: 0;
+        border-radius: 6px;
+        padding: 10px 14px;
+        font: inherit;
+        font-weight: 700;
+        color: #ffffff;
+        background: #176b5d;
+        cursor: pointer;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.65;
+      }
+
+      .feed {
+        display: grid;
+        gap: 12px;
+      }
+
+      .cast {
+        padding: 14px 16px;
+      }
+
+      .cast p {
+        margin: 0 0 10px;
+        white-space: pre-wrap;
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        color: #667080;
+        font-size: 14px;
+      }
+
+      .status {
+        color: #8a4b08;
+      }
+
+      .empty,
+      .error {
+        color: #667080;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1 id="arch-name">Arch</h1>
+        <p class="domain" id="arch-domain"></p>
+      </header>
+
+      <form id="composer">
+        <label>
+          Cast
+          <textarea id="text" name="text" maxlength="1024" required></textarea>
+        </label>
+        <label>
+          .anky
+          <input id="dotAnky" name="dotAnky" placeholder="optional local grammar" />
+        </label>
+        <button id="submit" type="submit">Post</button>
+      </form>
+
+      <section class="feed" id="feed" aria-live="polite"></section>
+    </main>
+
+    <script>
+      const state = {
+        arch: null,
+        casts: [],
+      };
+
+      const archName = document.querySelector("#arch-name");
+      const archDomain = document.querySelector("#arch-domain");
+      const feed = document.querySelector("#feed");
+      const form = document.querySelector("#composer");
+      const submit = document.querySelector("#submit");
+
+      async function loadArch() {
+        const response = await fetch("/api/arch");
+        if (!response.ok) throw new Error("Could not load Arch");
+        state.arch = await response.json();
+        archName.textContent = state.arch.slug;
+        archDomain.textContent = state.arch.domain;
+        document.title = state.arch.slug;
+      }
+
+      async function loadFeed() {
+        const response = await fetch("/api/feed");
+        if (!response.ok) throw new Error("Could not load feed");
+        const payload = await response.json();
+        state.casts = payload.casts ?? [];
+        renderFeed();
+      }
+
+      function renderFeed() {
+        if (state.casts.length === 0) {
+          feed.innerHTML = '<p class="empty">No local casts yet.</p>';
+          return;
+        }
+
+        feed.replaceChildren(
+          ...state.casts.map((cast) => {
+            const article = document.createElement("article");
+            article.className = "cast";
+
+            const text = document.createElement("p");
+            text.textContent = cast.text;
+
+            const meta = document.createElement("div");
+            meta.className = "meta";
+            meta.append(
+              `posted via this Arch`,
+              `status: ${cast.status}`,
+              new Date(cast.createdAt).toLocaleString(),
+            );
+
+            if (cast.dotAnky) {
+              meta.append(`.anky: ${cast.dotAnky}`);
+            }
+
+            article.append(text, meta);
+            return article;
+          }),
+        );
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        submit.disabled = true;
+
+        const data = new FormData(form);
+        const payload = {
+          text: data.get("text"),
+          dotAnky: data.get("dotAnky"),
+        };
+
+        try {
+          const response = await fetch("/api/casts", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+            },
+            body: JSON.stringify(payload),
+          });
+
+          if (!response.ok) throw new Error("Post failed");
+          form.reset();
+          await loadFeed();
+        } catch (error) {
+          feed.innerHTML = '<p class="error">Could not post the cast.</p>';
+        } finally {
+          submit.disabled = false;
+        }
+      });
+
+      Promise.all([loadArch(), loadFeed()]).catch(() => {
+        feed.innerHTML = '<p class="error">Could not connect to the Arches API.</p>';
+      });
+    </script>
+  </body>
+</html>
