@@ -1,17 +1,55 @@
 # Arches Domain Setup
 
 The first public scaffold uses static hosting for both the marketing site and
-the installer endpoint.
+the installer endpoint. This repo deploys `site/` to GitHub Pages from
+`.github/workflows/deploy-site.yml`.
+
+Current live Pages URL:
+
+```text
+https://jpfraneto.github.io/arches/
+```
+
+`arches.lat` is configured as the GitHub Pages custom domain for this repo, but
+the DNS records still need to be changed at the DNS provider.
 
 ## DNS Targets
 
 - `arches.lat`: landing page for Arches.
 - `install.arches.lat`: raw installer script endpoint.
 
-Point both records at the static host that serves the `site/` directory. The
-exact DNS value depends on that host. Common setups use `A` or `AAAA` records
-for a static web server, or `CNAME` records for a managed static hosting
-provider.
+The domain currently uses Namecheap nameservers:
+
+```text
+dns1.registrar-servers.com
+dns2.registrar-servers.com
+```
+
+For `arches.lat`, remove the current Namecheap forwarding/parking record and
+add GitHub Pages apex records:
+
+```text
+A     @    185.199.108.153
+A     @    185.199.109.153
+A     @    185.199.110.153
+A     @    185.199.111.153
+AAAA  @    2606:50c0:8000::153
+AAAA  @    2606:50c0:8001::153
+AAAA  @    2606:50c0:8002::153
+AAAA  @    2606:50c0:8003::153
+```
+
+GitHub Pages supports one custom domain per Pages site, with `www` as the
+special redirect exception. To keep the public one-liner as
+`https://install.arches.lat`, choose one of these approaches for the installer
+subdomain:
+
+- Configure DNS/provider forwarding from `https://install.arches.lat/` to
+  `https://arches.lat/install`.
+- Create a second minimal GitHub Pages site whose custom domain is
+  `install.arches.lat` and whose root serves the installer script.
+- Use a small VPS or edge router only if exact host/path routing is worth the
+  operational cost.
 
 ## Static Paths
 

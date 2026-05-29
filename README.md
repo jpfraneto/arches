@@ -90,6 +90,16 @@ Configure `install.arches.lat` so its root path serves the raw contents of
 `site/install`. If the same static host serves both domains, route or rewrite
 `https://install.arches.lat/` to `/install`.
 
+GitHub Pages is enabled for this repo and deploys `site/` on every push to
+`main` that changes the site or deploy workflow. The current Pages URL is:
+
+```text
+https://jpfraneto.github.io/arches/
+```
+
+The `arches.lat` custom domain is configured in GitHub Pages. DNS still needs
+to point at GitHub Pages before the domain resolves to the deployed site.
+
 Test the static site locally:
 
 ```bash
