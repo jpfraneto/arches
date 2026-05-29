@@ -1,22 +1,8 @@
 services:
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    depends_on:
-      - arches-api
-      - arches-web
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    networks:
-      - arches
+__CADDY_SERVICE__
 
   arches-api:
-    image: ${ARCHES_API_IMAGE:-ghcr.io/jpfraneto/arches-api:placeholder}
+    image: ${ARCHES_API_IMAGE:-ghcr.io/jpfraneto/arches-api:latest}
     restart: unless-stopped
     env_file:
       - .env
@@ -34,11 +20,12 @@ services:
         condition: service_started
     expose:
       - "3000"
+__ARCHES_API_PORTS__
     networks:
       - arches
 
   arches-web:
-    image: ${ARCHES_WEB_IMAGE:-ghcr.io/jpfraneto/arches-web:placeholder}
+    image: ${ARCHES_WEB_IMAGE:-ghcr.io/jpfraneto/arches-web:latest}
     restart: unless-stopped
     env_file:
       - .env
@@ -49,6 +36,7 @@ services:
       - arches-api
     expose:
       - "3000"
+__ARCHES_WEB_PORTS__
     networks:
       - arches
 
@@ -79,7 +67,7 @@ services:
       - arches
 
   hypersnap-lite:
-    image: ${HYPERSNAP_LITE_IMAGE}
+    image: ${HYPERSNAP_LITE_IMAGE:-ghcr.io/jpfraneto/hypersnap-lite:latest}
     restart: unless-stopped
     env_file:
       - .env

@@ -16,20 +16,31 @@ Arches consumes Hypersnap Lite through its Docker image/config contract. This
 repo must not copy Hypersnap Lite source code and must not become a full
 Farcaster indexer.
 
-## Local Appliance Install
+## Appliance Install
 
-For this v0 PR, generate local appliance files with:
+For v0, generate appliance files with:
 
 ```bash
 bash scripts/install.sh \
   --arch anky \
   --domain anky.arches.lat \
+  --mode vps \
   --admin-fid YOUR_FID \
   --email YOUR_SUPPORT_EMAIL
 ```
 
 If `--admin-fid` or `--email` still use the placeholder values, the installer
 prompts for real values.
+
+Installer modes:
+
+- `local`: no Caddy, `--domain` can be omitted and defaults to `localhost`,
+  web is exposed at `http://localhost:3000`, and the API is exposed at
+  `http://localhost:3001`.
+- `vps`: includes Caddy, requires a real domain, and uses `--email` as the
+  ACME/contact email.
+- `existing-proxy`: does not include Caddy, requires a real domain, and exposes
+  localhost app ports for a user-managed reverse proxy.
 
 By default the installer renders files and prints next steps. It does not start
 Docker services unless `--yes` is passed:
@@ -38,6 +49,7 @@ Docker services unless `--yes` is passed:
 bash scripts/install.sh \
   --arch anky \
   --domain anky.arches.lat \
+  --mode vps \
   --admin-fid 123 \
   --email support@example.com \
   --yes
@@ -59,11 +71,20 @@ curl -fsSL https://install.arches.lat | bash -s -- \
   --email YOUR_SUPPORT_EMAIL
 ```
 
+The one-liner will use the same installer modes. `vps` is the default mode.
+
 ## Apps
 
 - `apps/api` contains a minimal Bun + Hono API.
 - `apps/web` contains a minimal web composer and feed.
 - `templates` contains the Docker Compose, Caddy, and environment templates.
+- `.github/workflows/publish-images.yml` publishes the appliance images to GHCR.
+
+Published image names:
+
+- `ghcr.io/jpfraneto/arches-api:latest`
+- `ghcr.io/jpfraneto/arches-web:latest`
+- `ghcr.io/jpfraneto/hypersnap-lite:latest`
 
 API endpoints:
 
@@ -73,27 +94,54 @@ API endpoints:
 - `POST /api/casts`
 - `POST /api/quote`
 
-## $ARCHES Discount
+## Local Testing
 
-The appliance config includes the $ARCHES coin contract address:
+Render a local appliance without starting Docker:
+
+```bash
+ARCHES_INSTALL_DIR=/tmp/arches-local bash scripts/install.sh \
+  --arch anky \
+  --mode local \
+  --admin-fid 123 \
+  --email support@example.com
+```
+
+Start it only when ready:
+
+```bash
+cd /tmp/arches-local
+docker compose up -d
+```
+
+Build the API and web images locally:
+
+```bash
+docker build -t arches-api:local apps/api
+docker build -t arches-web:local apps/web
+```
+
+## Experimental $ARCHES Discount
+
+The appliance config includes disabled experimental $ARCHES settings:
 
 ```env
+ARCHES_EXPERIMENTAL_PAYMENTS_ENABLED=false
 ARCHES_COIN_CONTRACT_ADDRESS=0x09b8903aBf2ea0721E34427353988c2F43c6d64F
 ARCHES_COIN_DISCOUNT_BPS=1618
 ```
 
-When `POST /api/quote` receives `paymentMethod: "arches_coin"`, it applies a
-16.18% discount to the subtotal. v0 only calculates the discount; it does not
-collect payment or verify token transfers yet.
+Payment, licensing, discounts, and token verification are not part of the core
+v0 install path. When explicitly enabled, `POST /api/quote` can calculate the
+experimental discount, but it does not collect payment or verify transfers.
 
 ## v0 Limitations
 
 - Casts are stored in memory in the API process.
 - New casts are marked `local`; Farcaster publishing is not implemented yet.
 - Admin verification is not implemented yet.
-- $ARCHES payment settlement and onchain payment verification are not
-  implemented yet.
-- `arches-api` and `arches-web` use placeholder Docker image names until this
-  repo publishes images.
+- Payment, licensing, $ARCHES discount settlement, and onchain payment
+  verification are not implemented yet.
+- Production persistence is deferred while the API still uses the in-memory
+  cast store.
 - The local read plane is scoped to casts created through an Arch. It is not a
   global Farcaster indexer.

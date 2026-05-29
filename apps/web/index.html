@@ -18,6 +18,10 @@
         box-sizing: border-box;
       }
 
+      [hidden] {
+        display: none !important;
+      }
+
       body {
         margin: 0;
       }
@@ -180,7 +184,7 @@
         <button id="submit" type="submit">Post</button>
       </form>
 
-      <section class="quote" aria-labelledby="quote-title">
+      <section class="quote" id="quote-section" aria-labelledby="quote-title" hidden>
         <h2 id="quote-title">Appliance quote</h2>
         <div class="quote-grid">
           <label>
@@ -212,6 +216,7 @@
       const feed = document.querySelector("#feed");
       const form = document.querySelector("#composer");
       const submit = document.querySelector("#submit");
+      const quoteSection = document.querySelector("#quote-section");
       const subtotal = document.querySelector("#subtotal");
       const paymentMethod = document.querySelector("#paymentMethod");
       const quoteResult = document.querySelector("#quote-result");
@@ -223,6 +228,11 @@
         archName.textContent = state.arch.slug;
         archDomain.textContent = state.arch.domain;
         document.title = state.arch.slug;
+
+        if (state.arch.payments?.enabled) {
+          quoteSection.hidden = false;
+          await loadQuote();
+        }
       }
 
       async function loadFeed() {
@@ -355,7 +365,7 @@
         });
       });
 
-      Promise.all([loadArch(), loadFeed(), loadQuote()]).catch(() => {
+      Promise.all([loadArch(), loadFeed()]).catch(() => {
         feed.innerHTML = '<p class="error">Could not connect to the Arches API.</p>';
       });
     </script>

@@ -12,7 +12,7 @@ HYPERSNAP_LITE_IMAGE=ghcr.io/jpfraneto/hypersnap-lite:latest
 The Docker Compose template uses:
 
 ```yaml
-image: ${HYPERSNAP_LITE_IMAGE}
+image: ${HYPERSNAP_LITE_IMAGE:-ghcr.io/jpfraneto/hypersnap-lite:latest}
 ```
 
 ## Boundary

@@ -22,6 +22,7 @@ const archDomain = Bun.env.ARCH_DOMAIN ?? "localhost";
 const adminFid = Bun.env.ARCH_ADMIN_FID ?? "";
 const supportEmail = Bun.env.ARCH_SUPPORT_EMAIL ?? "";
 const port = Number(Bun.env.PORT ?? 3000);
+const experimentalPaymentsEnabled = parseBoolean(Bun.env.ARCHES_EXPERIMENTAL_PAYMENTS_ENABLED);
 const archesCoinSymbol = Bun.env.ARCHES_COIN_SYMBOL ?? "ARCHES";
 const archesCoinContractAddress =
   Bun.env.ARCHES_COIN_CONTRACT_ADDRESS ?? "0x09b8903aBf2ea0721E34427353988c2F43c6d64F";
@@ -58,17 +59,25 @@ app.get("/api/arch", (c) => {
     supportEmail,
     provenanceLabel: `posted via ${archId}`,
     payments: {
-      archesCoin: {
-        symbol: archesCoinSymbol,
-        contractAddress: archesCoinContractAddress,
-        discountBps: archesCoinDiscountBps,
-        discountPercent: basisPointsToPercent(archesCoinDiscountBps),
-      },
+      experimental: true,
+      enabled: experimentalPaymentsEnabled,
+      archesCoin: experimentalPaymentsEnabled
+        ? {
+            symbol: archesCoinSymbol,
+            contractAddress: archesCoinContractAddress,
+            discountBps: archesCoinDiscountBps,
+            discountPercent: basisPointsToPercent(archesCoinDiscountBps),
+          }
+        : null,
     },
   });
 });
 
 app.post("/api/quote", async (c) => {
+  if (!experimentalPaymentsEnabled) {
+    return c.json({ error: "experimental payments are disabled" }, 404);
+  }
+
   const body = await c.req.json().catch(() => null);
 
   if (!body || !Number.isInteger(body.subtotalCents) || body.subtotalCents < 0) {
@@ -172,6 +181,10 @@ function parseBasisPoints(value: string | undefined, fallback: number): number {
 
 function basisPointsToPercent(bps: number): number {
   return bps / 100;
+}
+
+function parseBoolean(value: string | undefined): boolean {
+  return value === "1" || value === "true" || value === "yes";
 }
 
 export default {

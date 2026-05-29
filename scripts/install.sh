@@ -3,6 +3,7 @@ set -euo pipefail
 
 ARCH_SLUG=""
 ARCH_DOMAIN=""
+INSTALL_MODE="vps"
 ARCH_ADMIN_FID=""
 ARCH_SUPPORT_EMAIL=""
 ASSUME_YES=0
@@ -13,13 +14,15 @@ Usage:
   bash scripts/install.sh \
     --arch anky \
     --domain anky.arches.lat \
+    --mode vps \
     --admin-fid YOUR_FID \
     --email YOUR_SUPPORT_EMAIL \
     [--yes]
 
 Options:
   --arch        Lowercase URL-safe community slug.
-  --domain      Hostname for this Arch.
+  --domain      Hostname for this Arch. Defaults to localhost in --mode local.
+  --mode        Install mode: local, vps, or existing-proxy. Default: vps.
   --admin-fid   Numeric Farcaster FID for the first admin.
   --email       Support and ACME contact email.
   --yes         Start Docker Compose services after rendering files.
@@ -55,6 +58,15 @@ while [ $# -gt 0 ]; do
       ;;
     --domain=*)
       ARCH_DOMAIN="${1#*=}"
+      shift
+      ;;
+    --mode)
+      need_value "$@"
+      INSTALL_MODE="$2"
+      shift 2
+      ;;
+    --mode=*)
+      INSTALL_MODE="${1#*=}"
       shift
       ;;
     --admin-fid)
@@ -102,7 +114,22 @@ prompt_for() {
 }
 
 [ -n "$ARCH_SLUG" ] || die "--arch is required"
-[ -n "$ARCH_DOMAIN" ] || die "--domain is required"
+
+case "$INSTALL_MODE" in
+  local|vps|existing-proxy)
+    ;;
+  *)
+    die "--mode must be local, vps, or existing-proxy"
+    ;;
+esac
+
+if [ "$INSTALL_MODE" = "local" ] && [ -z "$ARCH_DOMAIN" ]; then
+  ARCH_DOMAIN="localhost"
+fi
+
+if [ "$INSTALL_MODE" != "local" ] && [ -z "$ARCH_DOMAIN" ]; then
+  die "--domain is required for --mode $INSTALL_MODE"
+fi
 
 if [ -z "$ARCH_ADMIN_FID" ] || [ "$ARCH_ADMIN_FID" = "YOUR_FID" ]; then
   prompt_for "Admin FID" ARCH_ADMIN_FID
@@ -115,8 +142,16 @@ fi
 printf '%s' "$ARCH_SLUG" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$' \
   || die "--arch must be lowercase URL-safe text like anky or anky-labs"
 
-printf '%s' "$ARCH_DOMAIN" | grep -Eq '^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$' \
-  || die "--domain must look like a hostname, for example anky.arches.lat"
+if [ "$INSTALL_MODE" = "local" ] && [ "$ARCH_DOMAIN" = "localhost" ]; then
+  :
+else
+  printf '%s' "$ARCH_DOMAIN" | grep -Eq '^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$' \
+    || die "--domain must look like a hostname, for example anky.arches.lat"
+fi
+
+if [ "$INSTALL_MODE" != "local" ] && [ "$ARCH_DOMAIN" = "localhost" ]; then
+  die "--mode $INSTALL_MODE requires a real domain, not localhost"
+fi
 
 printf '%s' "$ARCH_ADMIN_FID" | grep -Eq '^[0-9]+$' \
   || die "--admin-fid must be numeric"
@@ -170,6 +205,54 @@ render_template() {
     "$source" > "$target"
 }
 
+render_compose_template() {
+  local source="$1"
+  local target="$2"
+  local caddy_service=""
+  local api_ports=""
+  local web_ports=""
+
+  if [ "$INSTALL_MODE" = "vps" ]; then
+    caddy_service='  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - arches-api
+      - arches-web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - arches'
+  else
+    api_ports='    ports:
+      - "${ARCHES_HOST_BIND:-127.0.0.1}:${ARCHES_API_PORT:-3001}:3000"'
+    web_ports='    ports:
+      - "${ARCHES_HOST_BIND:-127.0.0.1}:${ARCHES_WEB_PORT:-3000}:3000"'
+  fi
+
+  while IFS= read -r line; do
+    case "$line" in
+      "__CADDY_SERVICE__")
+        [ -n "$caddy_service" ] && printf '%s\n' "$caddy_service"
+        ;;
+      "__ARCHES_API_PORTS__")
+        [ -n "$api_ports" ] && printf '%s\n' "$api_ports"
+        ;;
+      "__ARCHES_WEB_PORTS__")
+        [ -n "$web_ports" ] && printf '%s\n' "$web_ports"
+        ;;
+      *)
+        printf '%s\n' "$line"
+        ;;
+    esac
+  done < "$source" > "$target"
+}
+
 [ -d "$TEMPLATE_DIR" ] || die "missing templates directory: $TEMPLATE_DIR"
 
 mkdir -p "$INSTALL_DIR"
@@ -188,26 +271,41 @@ REDIS_PASSWORD="$(random_secret)"
 cat > "$ENV_FILE" <<EOF
 ARCH_SLUG=$ARCH_SLUG
 ARCH_DOMAIN=$ARCH_DOMAIN
+ARCHES_MODE=$INSTALL_MODE
 ARCH_ADMIN_FID=$ARCH_ADMIN_FID
 ARCH_SUPPORT_EMAIL=$ARCH_SUPPORT_EMAIL
+ARCHES_API_IMAGE=ghcr.io/jpfraneto/arches-api:latest
+ARCHES_WEB_IMAGE=ghcr.io/jpfraneto/arches-web:latest
 HYPERSNAP_LITE_IMAGE=ghcr.io/jpfraneto/hypersnap-lite:latest
+ARCHES_HOST_BIND=127.0.0.1
+ARCHES_WEB_PORT=3000
+ARCHES_API_PORT=3001
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
 REDIS_PASSWORD=$REDIS_PASSWORD
-ARCHES_API_IMAGE=ghcr.io/jpfraneto/arches-api:placeholder
-ARCHES_WEB_IMAGE=ghcr.io/jpfraneto/arches-web:placeholder
+
+# Experimental only. Disabled by default and not part of the core v0 install path.
+ARCHES_EXPERIMENTAL_PAYMENTS_ENABLED=false
 ARCHES_COIN_SYMBOL=ARCHES
 ARCHES_COIN_CONTRACT_ADDRESS=0x09b8903aBf2ea0721E34427353988c2F43c6d64F
 ARCHES_COIN_DISCOUNT_BPS=1618
 EOF
 
-render_template "$TEMPLATE_DIR/docker-compose.yml" "$COMPOSE_FILE"
-render_template "$TEMPLATE_DIR/Caddyfile" "$CADDY_FILE"
+render_compose_template "$TEMPLATE_DIR/docker-compose.yml" "$COMPOSE_FILE"
+
+if [ "$INSTALL_MODE" = "vps" ]; then
+  render_template "$TEMPLATE_DIR/Caddyfile" "$CADDY_FILE"
+else
+  rm -f "$CADDY_FILE"
+fi
 
 printf '\nArches appliance files generated in %s\n\n' "$INSTALL_DIR"
 printf 'Generated:\n'
 printf '  %s\n' "$ENV_FILE"
 printf '  %s\n' "$COMPOSE_FILE"
-printf '  %s\n\n' "$CADDY_FILE"
+if [ "$INSTALL_MODE" = "vps" ]; then
+  printf '  %s\n' "$CADDY_FILE"
+fi
+printf '\n'
 
 compose_cmd=""
 if command -v docker >/dev/null 2>&1; then
@@ -232,15 +330,27 @@ EOF
   exit 0
 fi
 
+case "$INSTALL_MODE" in
+  local)
+    MODE_NOTE="local exposes the web app at http://localhost:3000 and API at http://localhost:3001."
+    ;;
+  vps)
+    MODE_NOTE="vps includes Caddy. Point DNS for $ARCH_DOMAIN at this server before starting."
+    ;;
+  existing-proxy)
+    MODE_NOTE="existing-proxy exposes localhost ports for a user-managed reverse proxy routing $ARCH_DOMAIN."
+    ;;
+esac
+
 cat <<EOF
 Next steps:
   1. Review $ENV_FILE.
-  2. Point DNS for $ARCH_DOMAIN at this server.
+  2. Confirm the mode-specific routing below.
   3. Start the appliance when ready:
        cd "$INSTALL_DIR" && $compose_cmd up -d
 
-Note:
-  arches-api and arches-web currently use placeholder images until this repo publishes them.
+Mode:
+  $MODE_NOTE
 
 EOF
 
