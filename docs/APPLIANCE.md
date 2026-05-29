@@ -54,8 +54,22 @@ not replaced accidentally.
 The script prints Docker installation guidance if Docker Compose is missing. It
 only starts services automatically when `--yes` is passed.
 
+## $ARCHES Discount
+
+Generated environments include:
+
+```env
+ARCHES_COIN_SYMBOL=ARCHES
+ARCHES_COIN_CONTRACT_ADDRESS=0x09b8903aBf2ea0721E34427353988c2F43c6d64F
+ARCHES_COIN_DISCOUNT_BPS=1618
+```
+
+The API uses `ARCHES_COIN_DISCOUNT_BPS=1618` to calculate a 16.18% discount
+when a quote is requested with `paymentMethod: "arches_coin"`.
+
 ## v0 Honesty
 
 This scaffold does not publish casts to Farcaster yet, does not verify admin
-ownership, and does not index global Farcaster data. It only establishes the
-appliance shape and the "posted via this Arch" local provenance path.
+ownership, does not verify $ARCHES token payments, and does not index global
+Farcaster data. It only establishes the appliance shape and the "posted via this
+Arch" local provenance path.

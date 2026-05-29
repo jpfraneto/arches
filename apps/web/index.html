@@ -44,6 +44,7 @@
       }
 
       form,
+      .quote,
       .cast {
         background: #ffffff;
         border: 1px solid #dde1e7;
@@ -57,6 +58,19 @@
         margin-bottom: 20px;
       }
 
+      .quote {
+        display: grid;
+        gap: 12px;
+        padding: 16px;
+        margin-bottom: 20px;
+      }
+
+      .quote-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 12px;
+      }
+
       label {
         display: grid;
         gap: 6px;
@@ -64,7 +78,8 @@
       }
 
       textarea,
-      input {
+      input,
+      select {
         width: 100%;
         border: 1px solid #c8ced8;
         border-radius: 6px;
@@ -125,6 +140,25 @@
       .error {
         color: #667080;
       }
+
+      .quote-result {
+        display: grid;
+        gap: 4px;
+        margin: 0;
+        color: #3f4651;
+      }
+
+      .quote-total {
+        color: #15171a;
+        font-size: 24px;
+        font-weight: 800;
+      }
+
+      @media (max-width: 640px) {
+        .quote-grid {
+          grid-template-columns: 1fr;
+        }
+      }
     </style>
   </head>
   <body>
@@ -146,6 +180,24 @@
         <button id="submit" type="submit">Post</button>
       </form>
 
+      <section class="quote" aria-labelledby="quote-title">
+        <h2 id="quote-title">Appliance quote</h2>
+        <div class="quote-grid">
+          <label>
+            Total before discount
+            <input id="subtotal" name="subtotal" type="number" min="0" step="0.01" value="100" />
+          </label>
+          <label>
+            Payment method
+            <select id="paymentMethod" name="paymentMethod">
+              <option value="fiat">Standard payment</option>
+              <option value="arches_coin">$ARCHES coin</option>
+            </select>
+          </label>
+        </div>
+        <p class="quote-result" id="quote-result"></p>
+      </section>
+
       <section class="feed" id="feed" aria-live="polite"></section>
     </main>
 
@@ -160,6 +212,9 @@
       const feed = document.querySelector("#feed");
       const form = document.querySelector("#composer");
       const submit = document.querySelector("#submit");
+      const subtotal = document.querySelector("#subtotal");
+      const paymentMethod = document.querySelector("#paymentMethod");
+      const quoteResult = document.querySelector("#quote-result");
 
       async function loadArch() {
         const response = await fetch("/api/arch");
@@ -176,6 +231,55 @@
         const payload = await response.json();
         state.casts = payload.casts ?? [];
         renderFeed();
+      }
+
+      async function loadQuote() {
+        const subtotalCents = Math.round(Number(subtotal.value || 0) * 100);
+        const response = await fetch("/api/quote", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            subtotalCents,
+            paymentMethod: paymentMethod.value,
+          }),
+        });
+
+        if (!response.ok) throw new Error("Could not load quote");
+        const payload = await response.json();
+        renderQuote(payload.quote);
+      }
+
+      function renderQuote(quote) {
+        const parts = [
+          textLine("Subtotal", money(quote.subtotalCents)),
+          textLine("Discount", `-${money(quote.discount.amountCents)} (${quote.discount.percent}%)`),
+          textLine("Token", `$${quote.discount.symbol} ${quote.discount.contractAddress}`),
+        ];
+
+        quoteResult.replaceChildren(
+          ...parts,
+          element("span", "quote-total", `Total ${money(quote.totalCents)}`),
+        );
+      }
+
+      function textLine(label, value) {
+        return element("span", "", `${label}: ${value}`);
+      }
+
+      function element(tagName, className, text) {
+        const node = document.createElement(tagName);
+        if (className) node.className = className;
+        node.textContent = text;
+        return node;
+      }
+
+      function money(cents) {
+        return new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
+        }).format(cents / 100);
       }
 
       function renderFeed() {
@@ -239,7 +343,19 @@
         }
       });
 
-      Promise.all([loadArch(), loadFeed()]).catch(() => {
+      subtotal.addEventListener("input", () => {
+        loadQuote().catch(() => {
+          quoteResult.textContent = "Could not calculate the quote.";
+        });
+      });
+
+      paymentMethod.addEventListener("change", () => {
+        loadQuote().catch(() => {
+          quoteResult.textContent = "Could not calculate the quote.";
+        });
+      });
+
+      Promise.all([loadArch(), loadFeed(), loadQuote()]).catch(() => {
         feed.innerHTML = '<p class="error">Could not connect to the Arches API.</p>';
       });
     </script>

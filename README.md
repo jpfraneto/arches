@@ -71,12 +71,28 @@ API endpoints:
 - `GET /api/arch`
 - `GET /api/feed`
 - `POST /api/casts`
+- `POST /api/quote`
+
+## $ARCHES Discount
+
+The appliance config includes the $ARCHES coin contract address:
+
+```env
+ARCHES_COIN_CONTRACT_ADDRESS=0x09b8903aBf2ea0721E34427353988c2F43c6d64F
+ARCHES_COIN_DISCOUNT_BPS=1618
+```
+
+When `POST /api/quote` receives `paymentMethod: "arches_coin"`, it applies a
+16.18% discount to the subtotal. v0 only calculates the discount; it does not
+collect payment or verify token transfers yet.
 
 ## v0 Limitations
 
 - Casts are stored in memory in the API process.
 - New casts are marked `local`; Farcaster publishing is not implemented yet.
 - Admin verification is not implemented yet.
+- $ARCHES payment settlement and onchain payment verification are not
+  implemented yet.
 - `arches-api` and `arches-web` use placeholder Docker image names until this
   repo publishes images.
 - The local read plane is scoped to casts created through an Arch. It is not a
