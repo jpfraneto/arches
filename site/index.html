@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Arches</title>
+    <meta
+      name="description"
+      content="Arches lets any community create its own Farcaster client in one command."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/">
+        <span class="brand-mark" aria-hidden="true">A</span>
+        <span>Arches</span>
+      </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="#generator">Install</a>
+        <a href="#model">Model</a>
+        <a href="./install">Script</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Community Farcaster clients</p>
+          <h1>Arches lets any community create its own Farcaster client.</h1>
+          <p class="lede">
+            An Arch is a custom social surface for one community, with its own
+            domain, feed, interface, grammar, and provenance.
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="#generator">Generate install command</a>
+            <a class="button secondary" href="./install">View installer script</a>
+          </div>
+        </div>
+
+        <div class="appliance-map" aria-label="Arches appliance model">
+          <div class="map-node protocol">
+            <span>Protocol</span>
+            <strong>Farcaster</strong>
+          </div>
+          <div class="map-node factory">
+            <span>Factory</span>
+            <strong>Arches</strong>
+          </div>
+          <div class="map-node engine">
+            <span>Write engine</span>
+            <strong>Hypersnap Lite</strong>
+          </div>
+          <div class="map-line line-a" aria-hidden="true"></div>
+          <div class="map-line line-b" aria-hidden="true"></div>
+          <div class="map-base">
+            <span>One community</span>
+            <strong>One Arch</strong>
+          </div>
+        </div>
+      </section>
+
+      <section id="model" class="model-section">
+        <div class="section-heading">
+          <p class="eyebrow">Layer model</p>
+          <h2>Small surface, clear boundary.</h2>
+        </div>
+        <div class="principles" aria-label="Arches product model">
+          <article>
+            <h3>Hypersnap Lite is the write engine.</h3>
+            <p>
+              Arches consumes Hypersnap Lite through its Docker image and config
+              contract.
+            </p>
+          </article>
+          <article>
+            <h3>Arches is the factory.</h3>
+            <p>
+              The installer generates the appliance files, domain wiring, API,
+              web, feed, and admin scaffold.
+            </p>
+          </article>
+          <article>
+            <h3>Farcaster is the protocol.</h3>
+            <p>
+              Arches does not become a global Farcaster indexer. Each Arch feed
+              is scoped to casts created through that Arch.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section id="generator" class="generator-section">
+        <div class="section-heading">
+          <p class="eyebrow">Installer</p>
+          <h2>Generate the command for your Arch.</h2>
+        </div>
+
+        <div class="generator">
+          <form class="install-form" id="install-form">
+            <label>
+              <span>Arch slug</span>
+              <input
+                id="arch"
+                name="arch"
+                type="text"
+                inputmode="url"
+                autocomplete="off"
+                placeholder="anky"
+                pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?"
+              />
+            </label>
+
+            <fieldset>
+              <legend>Mode</legend>
+              <div class="mode-control">
+                <label>
+                  <input type="radio" name="mode" value="local" checked />
+                  <span>Local</span>
+                </label>
+                <label>
+                  <input type="radio" name="mode" value="vps" />
+                  <span>VPS</span>
+                </label>
+                <label>
+                  <input type="radio" name="mode" value="existing-proxy" />
+                  <span>Existing proxy</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <label>
+              <span>Domain</span>
+              <input
+                id="domain"
+                name="domain"
+                type="text"
+                inputmode="url"
+                autocomplete="off"
+                placeholder="localhost"
+              />
+            </label>
+
+            <label>
+              <span>Admin FID</span>
+              <input
+                id="fid"
+                name="fid"
+                type="text"
+                inputmode="numeric"
+                autocomplete="off"
+                placeholder="123"
+              />
+            </label>
+
+            <label>
+              <span>Support email</span>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autocomplete="email"
+                placeholder="support@example.com"
+              />
+            </label>
+          </form>
+
+          <div class="command-panel">
+            <div class="command-header">
+              <span>Install command</span>
+              <button class="copy-button" id="copy-command" type="button">Copy</button>
+            </div>
+            <pre><code id="command-output"></code></pre>
+            <p class="note" id="mode-note"></p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>Static scaffold for arches.lat</span>
+      <a href="./install">install.arches.lat endpoint</a>
+    </footer>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

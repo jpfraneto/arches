@@ -73,6 +73,46 @@ curl -fsSL https://install.arches.lat | bash -s -- \
 
 The one-liner will use the same installer modes. `vps` is the default mode.
 
+## Public Website
+
+The first public website scaffold lives in `site/`.
+
+- `site/index.html` is the static `arches.lat` homepage.
+- `site/install` is the raw installer script for `install.arches.lat`.
+- `site/app.js` generates the install command in the browser.
+
+The homepage explains the product boundary: Hypersnap Lite is the write engine,
+Arches is the factory, and Farcaster is the protocol. The command generator is
+static and does not create accounts, collect payment, publish to Farcaster, or
+verify admins.
+
+Configure `install.arches.lat` so its root path serves the raw contents of
+`site/install`. If the same static host serves both domains, route or rewrite
+`https://install.arches.lat/` to `/install`.
+
+Test the static site locally:
+
+```bash
+python3 -m http.server 8080 --directory site
+```
+
+Then open `http://localhost:8080/` for the homepage and
+`http://localhost:8080/install` for the raw installer.
+
+Test the hosted installer shape locally:
+
+```bash
+rm -rf /tmp/arches-site-local
+curl -fsSL http://localhost:8080/install | \
+  ARCHES_INSTALL_DIR=/tmp/arches-site-local bash -s -- \
+    --arch anky \
+    --mode local \
+    --admin-fid 123 \
+    --email support@example.com
+```
+
+See `docs/DOMAIN_SETUP.md` for DNS and static hosting notes.
+
 ## Apps
 
 - `apps/api` contains a minimal Bun + Hono API.
