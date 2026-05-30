@@ -17,6 +17,7 @@ the DNS records still need to be changed at the DNS provider.
 
 - `arches.lat`: landing page for Arches.
 - `install.arches.lat`: raw installer script endpoint.
+- `*.arches.lat`: future Arch hostnames routed through Cloudflare Tunnel.
 
 The domain currently uses Namecheap nameservers:
 
@@ -40,8 +41,20 @@ AAAA  @    2606:50c0:8003::153
 ```
 
 GitHub Pages supports one custom domain per Pages site, with `www` as the
-special redirect exception. To keep the public one-liner as
-`https://install.arches.lat`, choose one of these approaches for the installer
+special redirect exception. That is enough for the temporary static landing
+page, but not enough for programmable `*.arches.lat` hostnames.
+
+For the zero-info install product, move DNS for `arches.lat` to Cloudflare and
+use Cloudflare Tunnel for Arch hostnames. The intended shape is:
+
+```text
+arches.lat          landing/control surface
+install.arches.lat  installer endpoint
+*.arches.lat        per-Arch tunnel hostnames
+```
+
+To keep the public one-liner as `https://install.arches.lat` before the full
+control plane exists, choose one of these approaches for the installer
 subdomain:
 
 - Configure DNS/provider forwarding from `https://install.arches.lat/` to

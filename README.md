@@ -37,6 +37,9 @@ Installer modes:
 - `local`: no Caddy, `--domain` can be omitted and defaults to `localhost`,
   web is exposed at `http://localhost:3000`, and the API is exposed at
   `http://localhost:3001`.
+- `tunnel-local`: no Caddy and no public host ports. Requires a Cloudflare
+  Tunnel token and runs `cloudflared` inside Docker so a `*.arches.lat` hostname
+  can route to the local appliance.
 - `vps`: includes Caddy, requires a real domain, and uses `--email` as the
   ACME/contact email.
 - `existing-proxy`: does not include Caddy, requires a real domain, and exposes
@@ -61,17 +64,45 @@ local testing.
 
 ## Future One-Liner
 
-The production goal is:
+The production goal is a zero-info install:
+
+```bash
+curl -fsSL https://install.arches.lat | bash
+```
+
+That flow will show a Farcaster QR code, derive the admin FID from a verified
+Farcaster signature, reserve a default `*.arches.lat` hostname, provision a
+Cloudflare Tunnel, and start the local appliance. No admin verification should
+be faked.
+
+The low-level one-liner remains available for explicit installs:
 
 ```bash
 curl -fsSL https://install.arches.lat | bash -s -- \
   --arch YOUR_COMMUNITY \
+  --mode vps \
   --domain YOUR_DOMAIN \
   --admin-fid YOUR_FID \
   --email YOUR_SUPPORT_EMAIL
 ```
 
-The one-liner will use the same installer modes. `vps` is the default mode.
+The one-liner uses the same installer modes. `vps` is the default mode.
+
+For live local hosting through Cloudflare Tunnel:
+
+```bash
+curl -fsSL https://install.arches.lat | bash -s -- \
+  --arch YOUR_COMMUNITY \
+  --mode tunnel-local \
+  --domain YOUR_COMMUNITY.arches.lat \
+  --admin-fid YOUR_VERIFIED_FID \
+  --tunnel-token CLOUDFLARE_TUNNEL_TOKEN
+```
+
+`tunnel-local` runs `cloudflared` in Docker and routes public traffic from the
+Arch hostname to the appliance over an outbound tunnel. See
+`docs/ZERO_INFO_INSTALL.md` for the shippable tunnel primitive and the control
+plane contract.
 
 ## Public Website
 

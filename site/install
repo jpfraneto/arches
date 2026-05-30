@@ -6,6 +6,7 @@ ARCH_DOMAIN=""
 INSTALL_MODE="vps"
 ARCH_ADMIN_FID=""
 ARCH_SUPPORT_EMAIL=""
+CLOUDFLARE_TUNNEL_TOKEN="${CLOUDFLARE_TUNNEL_TOKEN:-}"
 ASSUME_YES=0
 
 usage() {
@@ -17,14 +18,17 @@ Usage:
     --mode vps \
     --admin-fid YOUR_FID \
     --email YOUR_SUPPORT_EMAIL \
+    [--tunnel-token CLOUDFLARE_TUNNEL_TOKEN] \
     [--yes]
 
 Options:
   --arch        Lowercase URL-safe community slug.
   --domain      Hostname for this Arch. Defaults to localhost in --mode local.
-  --mode        Install mode: local, vps, or existing-proxy. Default: vps.
+  --mode        Install mode: local, tunnel-local, vps, or existing-proxy.
+                Default: vps.
   --admin-fid   Numeric Farcaster FID for the first admin.
   --email       Support and ACME contact email.
+  --tunnel-token  Cloudflare Tunnel token for --mode tunnel-local.
   --yes         Start Docker Compose services after rendering files.
   --help        Show this help.
 USAGE
@@ -87,6 +91,15 @@ while [ $# -gt 0 ]; do
       ARCH_SUPPORT_EMAIL="${1#*=}"
       shift
       ;;
+    --tunnel-token)
+      need_value "$@"
+      CLOUDFLARE_TUNNEL_TOKEN="$2"
+      shift 2
+      ;;
+    --tunnel-token=*)
+      CLOUDFLARE_TUNNEL_TOKEN="${1#*=}"
+      shift
+      ;;
     --yes)
       ASSUME_YES=1
       shift
@@ -116,10 +129,10 @@ prompt_for() {
 [ -n "$ARCH_SLUG" ] || die "--arch is required"
 
 case "$INSTALL_MODE" in
-  local|vps|existing-proxy)
+  local|tunnel-local|vps|existing-proxy)
     ;;
   *)
-    die "--mode must be local, vps, or existing-proxy"
+    die "--mode must be local, tunnel-local, vps, or existing-proxy"
     ;;
 esac
 
@@ -131,11 +144,17 @@ if [ "$INSTALL_MODE" != "local" ] && [ -z "$ARCH_DOMAIN" ]; then
   die "--domain is required for --mode $INSTALL_MODE"
 fi
 
+if [ "$INSTALL_MODE" = "tunnel-local" ] && [ -z "$CLOUDFLARE_TUNNEL_TOKEN" ]; then
+  die "--mode tunnel-local requires --tunnel-token from the Arches control plane or Cloudflare"
+fi
+
 if [ -z "$ARCH_ADMIN_FID" ] || [ "$ARCH_ADMIN_FID" = "YOUR_FID" ]; then
   prompt_for "Admin FID" ARCH_ADMIN_FID
 fi
 
-if [ -z "$ARCH_SUPPORT_EMAIL" ] || [ "$ARCH_SUPPORT_EMAIL" = "YOUR_SUPPORT_EMAIL" ]; then
+if [ "$INSTALL_MODE" = "tunnel-local" ] && { [ -z "$ARCH_SUPPORT_EMAIL" ] || [ "$ARCH_SUPPORT_EMAIL" = "YOUR_SUPPORT_EMAIL" ]; }; then
+  ARCH_SUPPORT_EMAIL="support@arches.lat"
+elif [ -z "$ARCH_SUPPORT_EMAIL" ] || [ "$ARCH_SUPPORT_EMAIL" = "YOUR_SUPPORT_EMAIL" ]; then
   prompt_for "Support email" ARCH_SUPPORT_EMAIL
 fi
 
@@ -179,6 +198,7 @@ write_embedded_templates() {
   cat > "$target_dir/docker-compose.yml" <<'EOF_COMPOSE'
 services:
 __CADDY_SERVICE__
+__CLOUDFLARED_SERVICE__
 
   arches-api:
     image: ${ARCHES_API_IMAGE:-ghcr.io/jpfraneto/arches-api:latest}
@@ -340,6 +360,7 @@ render_compose_template() {
   local source="$1"
   local target="$2"
   local caddy_service=""
+  local cloudflared_service=""
   local api_ports=""
   local web_ports=""
 
@@ -359,6 +380,16 @@ render_compose_template() {
       - caddy_config:/config
     networks:
       - arches'
+  elif [ "$INSTALL_MODE" = "tunnel-local" ]; then
+    cloudflared_service='  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - arches-api
+      - arches-web
+    networks:
+      - arches'
   else
     api_ports='    ports:
       - "${ARCHES_HOST_BIND:-127.0.0.1}:${ARCHES_API_PORT:-3001}:3000"'
@@ -370,6 +401,9 @@ render_compose_template() {
     case "$line" in
       "__CADDY_SERVICE__")
         [ -n "$caddy_service" ] && printf '%s\n' "$caddy_service"
+        ;;
+      "__CLOUDFLARED_SERVICE__")
+        [ -n "$cloudflared_service" ] && printf '%s\n' "$cloudflared_service"
         ;;
       "__ARCHES_API_PORTS__")
         [ -n "$api_ports" ] && printf '%s\n' "$api_ports"
@@ -417,6 +451,7 @@ HYPERSNAP_LITE_PLATFORM=linux/amd64
 ARCHES_HOST_BIND=127.0.0.1
 ARCHES_WEB_PORT=3000
 ARCHES_API_PORT=3001
+CLOUDFLARE_TUNNEL_TOKEN=$CLOUDFLARE_TUNNEL_TOKEN
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
 REDIS_PASSWORD=$REDIS_PASSWORD
 
@@ -470,6 +505,9 @@ fi
 case "$INSTALL_MODE" in
   local)
     MODE_NOTE="local exposes the web app at http://localhost:3000 and API at http://localhost:3001."
+    ;;
+  tunnel-local)
+    MODE_NOTE="tunnel-local runs cloudflared in Docker. Cloudflare routes $ARCH_DOMAIN to this appliance over an outbound tunnel."
     ;;
   vps)
     MODE_NOTE="vps includes Caddy. Point DNS for $ARCH_DOMAIN at this server before starting."

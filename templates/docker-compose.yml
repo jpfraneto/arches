@@ -1,5 +1,6 @@
 services:
 __CADDY_SERVICE__
+__CLOUDFLARED_SERVICE__
 
   arches-api:
     image: ${ARCHES_API_IMAGE:-ghcr.io/jpfraneto/arches-api:latest}

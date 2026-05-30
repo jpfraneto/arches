@@ -19,7 +19,8 @@ const buildCommand = () => {
   const domainValue = domainInput.value.trim();
   const domain = domainValue || (mode === "local" ? "" : "<domain>");
   const fid = field("#fid", "<fid>");
-  const email = field("#email", "<email>");
+  const email = field("#email", mode === "tunnel-local" ? "support@arches.lat" : "<email>");
+  const tunnelToken = field("#tunnel-token", "<cloudflare-tunnel-token>");
 
   const lines = [
     "curl -fsSL https://install.arches.lat | bash -s -- \\",
@@ -33,6 +34,11 @@ const buildCommand = () => {
 
   lines.push(`  --admin-fid ${fid} \\`);
   lines.push(`  --email ${email}`);
+
+  if (mode === "tunnel-local") {
+    lines[lines.length - 1] = `${lines[lines.length - 1]} \\`;
+    lines.push(`  --tunnel-token ${tunnelToken}`);
+  }
 
   return lines.join("\n");
 };
@@ -48,6 +54,12 @@ const updateModeState = () => {
   }
 
   domainInput.placeholder = "anky.arches.lat";
+  if (mode === "tunnel-local") {
+    modeNote.textContent =
+      "Live local mode needs a Cloudflare Tunnel token from the Arches control plane.";
+    return;
+  }
+
   modeNote.textContent =
     mode === "vps"
       ? "VPS mode includes Caddy and requires DNS pointed at the server."

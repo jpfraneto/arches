@@ -22,7 +22,15 @@ bash scripts/install.sh \
   --email YOUR_SUPPORT_EMAIL
 ```
 
-`vps` is the default mode so the future one-liner can stay short.
+`vps` is the default explicit mode. The intended public zero-info command is:
+
+```bash
+curl -fsSL https://install.arches.lat | bash
+```
+
+That flow requires an Arches control plane to verify Farcaster identity,
+reserve a slug, provision Cloudflare Tunnel, and return a verified appliance
+config to the installer.
 
 ## Install Directory
 
@@ -65,6 +73,10 @@ set explicitly so local arm64 machines can still run the current amd64 image.
 
 - `local`: no Caddy is rendered, `--domain` can default to `localhost`, and the
   web/API ports are bound on localhost for direct testing.
+- `tunnel-local`: no Caddy is rendered, a real domain is required, and the
+  generated appliance includes `cloudflared`. Cloudflare routes public traffic
+  to the appliance over an outbound tunnel. This mode requires a tunnel token
+  from Cloudflare or the Arches control plane.
 - `vps`: Caddy is rendered, a real domain is required, ports 80 and 443 are
   opened by Caddy, and `--email` is used for ACME/contact config.
 - `existing-proxy`: no Caddy is rendered, a real domain is required, and
@@ -73,6 +85,7 @@ set explicitly so local arm64 machines can still run the current amd64 image.
 ## Docker Compose Services
 
 - `caddy`: Public HTTP/HTTPS entrypoint and reverse proxy in `vps` mode.
+- `cloudflared`: Public tunnel connector in `tunnel-local` mode.
 - `arches-api`: Arches API scaffold. In v0 it stores casts in memory.
 - `arches-web`: Minimal community web surface and composer.
 - `postgres`: Intended local read plane for Arch-scoped data.

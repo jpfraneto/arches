@@ -119,6 +119,10 @@
                   <span>Local</span>
                 </label>
                 <label>
+                  <input type="radio" name="mode" value="tunnel-local" />
+                  <span>Live local</span>
+                </label>
+                <label>
                   <input type="radio" name="mode" value="vps" />
                   <span>VPS</span>
                 </label>
@@ -161,6 +165,17 @@
                 type="email"
                 autocomplete="email"
                 placeholder="support@example.com"
+              />
+            </label>
+
+            <label>
+              <span>Tunnel token</span>
+              <input
+                id="tunnel-token"
+                name="tunnel-token"
+                type="text"
+                autocomplete="off"
+                placeholder="Only needed for live local"
               />
             </label>
           </form>
