@@ -122,15 +122,16 @@ Configure `install.arches.lat` so its root path serves the raw contents of
 `https://install.arches.lat/` to `/install`.
 
 GitHub Pages is enabled for this repo and deploys `site/` on every push to
-`main` that changes the site or deploy workflow. The current Pages URL is:
+`main` that changes the site or deploy workflow. The current live URLs are:
 
 ```text
+https://arches.lat/
 https://jpfraneto.github.io/arches/
 ```
 
-The `arches.lat` custom domain should only be enabled in GitHub Pages after DNS
-points at GitHub Pages or after DNS moves to Cloudflare. Until then, the live
-site remains available at the `github.io` URL.
+`arches.lat` is managed in Cloudflare DNS and points at GitHub Pages. The
+`install.arches.lat` hostname should be a Cloudflare redirect or Worker route
+that serves the raw installer at `https://arches.lat/install`.
 
 Test the static site locally:
 

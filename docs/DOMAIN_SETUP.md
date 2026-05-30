@@ -4,15 +4,15 @@ The first public scaffold uses static hosting for both the marketing site and
 the installer endpoint. This repo deploys `site/` to GitHub Pages from
 `.github/workflows/deploy-site.yml`.
 
-Current live Pages URL:
+Current live URLs:
 
 ```text
+https://arches.lat/
 https://jpfraneto.github.io/arches/
 ```
 
-Do not enable `arches.lat` as the GitHub Pages custom domain until DNS points at
-GitHub Pages, otherwise the `github.io` URL will redirect to the currently
-parked Namecheap hostname.
+`arches.lat` is active in Cloudflare DNS and configured as the GitHub Pages
+custom domain for this repo.
 
 ## DNS Targets
 
@@ -20,15 +20,14 @@ parked Namecheap hostname.
 - `install.arches.lat`: raw installer script endpoint.
 - `*.arches.lat`: future Arch hostnames routed through Cloudflare Tunnel.
 
-The domain currently uses Namecheap nameservers:
+The domain uses Cloudflare nameservers:
 
 ```text
-dns1.registrar-servers.com
-dns2.registrar-servers.com
+chase.ns.cloudflare.com
+desi.ns.cloudflare.com
 ```
 
-For `arches.lat`, remove the current Namecheap forwarding/parking record and
-add GitHub Pages apex records:
+For `arches.lat`, keep the GitHub Pages apex records:
 
 ```text
 A     @    185.199.108.153
