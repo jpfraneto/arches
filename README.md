@@ -128,8 +128,9 @@ GitHub Pages is enabled for this repo and deploys `site/` on every push to
 https://jpfraneto.github.io/arches/
 ```
 
-The `arches.lat` custom domain is configured in GitHub Pages. DNS still needs
-to point at GitHub Pages before the domain resolves to the deployed site.
+The `arches.lat` custom domain should only be enabled in GitHub Pages after DNS
+points at GitHub Pages or after DNS moves to Cloudflare. Until then, the live
+site remains available at the `github.io` URL.
 
 Test the static site locally:
 

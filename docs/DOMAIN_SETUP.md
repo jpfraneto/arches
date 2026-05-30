@@ -10,8 +10,9 @@ Current live Pages URL:
 https://jpfraneto.github.io/arches/
 ```
 
-`arches.lat` is configured as the GitHub Pages custom domain for this repo, but
-the DNS records still need to be changed at the DNS provider.
+Do not enable `arches.lat` as the GitHub Pages custom domain until DNS points at
+GitHub Pages, otherwise the `github.io` URL will redirect to the currently
+parked Namecheap hostname.
 
 ## DNS Targets
 
