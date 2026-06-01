@@ -8,11 +8,14 @@ Current live URLs:
 
 ```text
 https://arches.lat/
+https://install.arches.lat/
 https://jpfraneto.github.io/arches/
 ```
 
 `arches.lat` is active in Cloudflare DNS and configured as the GitHub Pages
 custom domain for this repo.
+`install.arches.lat` is a proxied Cloudflare hostname with a Single Redirect to
+`https://arches.lat/install`.
 
 ## DNS Targets
 
@@ -44,8 +47,8 @@ GitHub Pages supports one custom domain per Pages site, with `www` as the
 special redirect exception. That is enough for the temporary static landing
 page, but not enough for programmable `*.arches.lat` hostnames.
 
-For the zero-info install product, move DNS for `arches.lat` to Cloudflare and
-use Cloudflare Tunnel for Arch hostnames. The intended shape is:
+For the zero-info install product, use Cloudflare Tunnel for Arch hostnames. The
+intended shape is:
 
 ```text
 arches.lat          landing/control surface
@@ -54,24 +57,25 @@ install.arches.lat  installer endpoint
 ```
 
 To keep the public one-liner as `https://install.arches.lat` before the full
-control plane exists, choose one of these approaches for the installer
-subdomain:
+control plane exists, Cloudflare DNS has:
 
-- Configure DNS/provider forwarding from `https://install.arches.lat/` to
-  `https://arches.lat/install`.
-- Create a second minimal GitHub Pages site whose custom domain is
-  `install.arches.lat` and whose root serves the installer script.
-- Use a small VPS or edge router only if exact host/path routing is worth the
-  operational cost.
+```text
+CNAME install.arches.lat arches.lat proxied
+```
+
+and a Single Redirect rule:
+
+```text
+install.arches.lat/* -> https://arches.lat/install
+```
 
 ## Static Paths
 
 - `site/index.html` is the `arches.lat` homepage.
 - `site/install` is the raw installer script.
 
-Configure `install.arches.lat` so its root path serves the raw contents of
-`site/install`. If the host serves the same static directory for both domains,
-route or rewrite `https://install.arches.lat/` to `/install`.
+`install.arches.lat` redirects to `https://arches.lat/install`, which serves the
+raw contents of `site/install`.
 
 The installer is static. It validates the requested Arch config, renders the
 Docker Compose appliance files, and optionally starts Docker services when the

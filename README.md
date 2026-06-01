@@ -126,12 +126,13 @@ GitHub Pages is enabled for this repo and deploys `site/` on every push to
 
 ```text
 https://arches.lat/
+https://install.arches.lat/
 https://jpfraneto.github.io/arches/
 ```
 
 `arches.lat` is managed in Cloudflare DNS and points at GitHub Pages. The
-`install.arches.lat` hostname should be a Cloudflare redirect or Worker route
-that serves the raw installer at `https://arches.lat/install`.
+`install.arches.lat` hostname is a proxied Cloudflare hostname with a Single
+Redirect to the raw installer at `https://arches.lat/install`.
 
 Test the static site locally:
 
