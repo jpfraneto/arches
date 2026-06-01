@@ -288,7 +288,7 @@ volumes:
 
 networks:
   arches:
-    name: arches-${ARCH_SLUG}
+    name: arches-${ARCH_SLUG}-${ARCHES_MODE}
 EOF_COMPOSE
 
   cat > "$target_dir/Caddyfile" <<'EOF_CADDY'
