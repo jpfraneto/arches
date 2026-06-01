@@ -49,6 +49,7 @@
 
       form,
       .quote,
+      .notice,
       .cast {
         background: #ffffff;
         border: 1px solid #dde1e7;
@@ -60,6 +61,39 @@
         gap: 12px;
         padding: 16px;
         margin-bottom: 20px;
+      }
+
+      .notice {
+        display: grid;
+        gap: 6px;
+        padding: 14px 16px;
+        margin-bottom: 20px;
+        border-color: #c7d8f2;
+        background: #f4f8ff;
+        color: #27384f;
+      }
+
+      .notice strong {
+        color: #15171a;
+      }
+
+      .notice p {
+        margin: 0;
+      }
+
+      .composer-status {
+        min-height: 22px;
+        margin: 0;
+        color: #496179;
+        font-size: 14px;
+      }
+
+      .composer-status.success {
+        color: #176b5d;
+      }
+
+      .composer-status.error {
+        color: #9d2b22;
       }
 
       .quote {
@@ -172,6 +206,14 @@
         <p class="domain" id="arch-domain"></p>
       </header>
 
+      <section class="notice" aria-labelledby="status-title">
+        <strong id="status-title">Live local Arch</strong>
+        <p>
+          Posts here are saved to this Arch feed and marked local. Farcaster
+          account signing and publishing are not enabled yet.
+        </p>
+      </section>
+
       <form id="composer">
         <label>
           Cast
@@ -182,6 +224,7 @@
           <input id="dotAnky" name="dotAnky" placeholder="optional local grammar" />
         </label>
         <button id="submit" type="submit">Post</button>
+        <p class="composer-status" id="composer-status" role="status" aria-live="polite"></p>
       </form>
 
       <section class="quote" id="quote-section" aria-labelledby="quote-title" hidden>
@@ -216,6 +259,7 @@
       const feed = document.querySelector("#feed");
       const form = document.querySelector("#composer");
       const submit = document.querySelector("#submit");
+      const composerStatus = document.querySelector("#composer-status");
       const quoteSection = document.querySelector("#quote-section");
       const subtotal = document.querySelector("#subtotal");
       const paymentMethod = document.querySelector("#paymentMethod");
@@ -310,9 +354,14 @@
             meta.className = "meta";
             meta.append(
               `posted via this Arch`,
+              cast.fid ? `fid: ${cast.fid}` : "account: unverified local visitor",
               `status: ${cast.status}`,
               new Date(cast.createdAt).toLocaleString(),
             );
+
+            if (cast.username) {
+              meta.append(`user: ${cast.username}`);
+            }
 
             if (cast.dotAnky) {
               meta.append(`.anky: ${cast.dotAnky}`);
@@ -327,6 +376,8 @@
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         submit.disabled = true;
+        composerStatus.className = "composer-status";
+        composerStatus.textContent = "Posting locally to this Arch...";
 
         const data = new FormData(form);
         const payload = {
@@ -344,10 +395,14 @@
           });
 
           if (!response.ok) throw new Error("Post failed");
+          const result = await response.json();
           form.reset();
           await loadFeed();
+          composerStatus.className = "composer-status success";
+          composerStatus.textContent = `Posted locally via ${state.arch?.slug ?? "this Arch"} (${result.cast.status}). Not sent to Farcaster.`;
         } catch (error) {
-          feed.innerHTML = '<p class="error">Could not post the cast.</p>';
+          composerStatus.className = "composer-status error";
+          composerStatus.textContent = "Could not post the cast.";
         } finally {
           submit.disabled = false;
         }
