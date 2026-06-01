@@ -149,6 +149,7 @@ verify token transfers.
 
 This scaffold does not publish casts to Farcaster yet, does not verify admin
 ownership, does not implement payment/licensing, and does not index global
-Farcaster data. Production persistence is still deferred while casts are stored
-in memory by the API process. It only establishes the appliance shape and the
-"posted via this Arch" local provenance path.
+Farcaster data. Because Arches data must map 1:1 to Farcaster data,
+`POST /api/casts` rejects local-only casts until Farcaster publishing is wired.
+The appliance currently establishes the install, routing, and provenance shape
+without pretending local writes are Farcaster casts.

@@ -96,6 +96,10 @@
         color: #9d2b22;
       }
 
+      .blocked-button {
+        background: #6b7280;
+      }
+
       .quote {
         display: grid;
         gap: 12px;
@@ -209,8 +213,8 @@
       <section class="notice" aria-labelledby="status-title">
         <strong id="status-title">Live local Arch</strong>
         <p>
-          Posts here are saved to this Arch feed and marked local. Farcaster
-          account signing and publishing are not enabled yet.
+          Farcaster publishing is not connected yet. Arches will not accept
+          local-only casts because the Arch feed must map 1:1 to Farcaster data.
         </p>
       </section>
 
@@ -223,7 +227,7 @@
           .anky
           <input id="dotAnky" name="dotAnky" placeholder="optional local grammar" />
         </label>
-        <button id="submit" type="submit">Post</button>
+        <button class="blocked-button" id="submit" type="submit">Posting disabled</button>
         <p class="composer-status" id="composer-status" role="status" aria-live="polite"></p>
       </form>
 
@@ -272,6 +276,7 @@
         archName.textContent = state.arch.slug;
         archDomain.textContent = state.arch.domain;
         document.title = state.arch.slug;
+        setComposerAvailability();
 
         if (state.arch.payments?.enabled) {
           quoteSection.hidden = false;
@@ -338,7 +343,7 @@
 
       function renderFeed() {
         if (state.casts.length === 0) {
-          feed.innerHTML = '<p class="empty">No local casts yet.</p>';
+          feed.innerHTML = '<p class="empty">No Farcaster-confirmed casts through this Arch yet.</p>';
           return;
         }
 
@@ -354,7 +359,7 @@
             meta.className = "meta";
             meta.append(
               `posted via this Arch`,
-              cast.fid ? `fid: ${cast.fid}` : "account: unverified local visitor",
+              cast.fid ? `fid: ${cast.fid}` : "fid: unavailable",
               `status: ${cast.status}`,
               new Date(cast.createdAt).toLocaleString(),
             );
@@ -375,9 +380,16 @@
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
+        if (!state.arch?.publishing?.farcaster?.enabled) {
+          composerStatus.className = "composer-status error";
+          composerStatus.textContent =
+            "Posting is disabled until this Arch can publish to Farcaster.";
+          return;
+        }
+
         submit.disabled = true;
         composerStatus.className = "composer-status";
-        composerStatus.textContent = "Posting locally to this Arch...";
+        composerStatus.textContent = "Submitting to Farcaster...";
 
         const data = new FormData(form);
         const payload = {
@@ -399,7 +411,7 @@
           form.reset();
           await loadFeed();
           composerStatus.className = "composer-status success";
-          composerStatus.textContent = `Posted locally via ${state.arch?.slug ?? "this Arch"} (${result.cast.status}). Not sent to Farcaster.`;
+          composerStatus.textContent = `Published through ${state.arch?.slug ?? "this Arch"} (${result.cast.status}).`;
         } catch (error) {
           composerStatus.className = "composer-status error";
           composerStatus.textContent = "Could not post the cast.";
@@ -426,3 +438,24 @@
     </script>
   </body>
 </html>
+      function setComposerAvailability() {
+        const enabled = Boolean(state.arch?.publishing?.farcaster?.enabled);
+        const controls = form.querySelectorAll("textarea, input, button");
+        controls.forEach((control) => {
+          control.disabled = !enabled;
+        });
+
+        if (!enabled) {
+          submit.textContent = "Farcaster publishing not connected";
+          composerStatus.className = "composer-status error";
+          composerStatus.textContent =
+            state.arch?.publishing?.farcaster?.message ??
+            "Posting is disabled until Farcaster publishing is connected.";
+          return;
+        }
+
+        submit.classList.remove("blocked-button");
+        submit.textContent = "Post to Farcaster";
+        composerStatus.className = "composer-status";
+        composerStatus.textContent = "";
+      }

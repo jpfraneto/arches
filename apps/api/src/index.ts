@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 
-type CastStatus = "local" | "submitted" | "confirmed" | "failed";
+type CastStatus = "submitted" | "confirmed" | "failed";
 type PaymentMethod = "fiat" | "arches_coin";
 
 type ArchCast = {
@@ -58,6 +58,14 @@ app.get("/api/arch", (c) => {
     adminFid: adminFid ? Number(adminFid) : null,
     supportEmail,
     provenanceLabel: `posted via ${archId}`,
+    publishing: {
+      farcaster: {
+        enabled: false,
+        status: "not_implemented",
+        message:
+          "Farcaster publishing is not wired yet. Arches will not accept local-only casts.",
+      },
+    },
     payments: {
       experimental: true,
       enabled: experimentalPaymentsEnabled,
@@ -96,7 +104,7 @@ app.post("/api/quote", async (c) => {
 
 app.get("/api/feed", (c) => {
   const archCasts = casts
-    .filter((cast) => cast.archId === archId)
+    .filter((cast) => cast.archId === archId && cast.status === "confirmed")
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   return c.json({
@@ -106,38 +114,14 @@ app.get("/api/feed", (c) => {
 });
 
 app.post("/api/casts", async (c) => {
-  const body = await c.req.json().catch(() => null);
-
-  if (!body || typeof body.text !== "string" || body.text.trim().length === 0) {
-    return c.json({ error: "text is required" }, 400);
-  }
-
-  const fid =
-    typeof body.fid === "number"
-      ? body.fid
-      : typeof body.fid === "string" && body.fid.trim() !== ""
-        ? Number(body.fid)
-        : undefined;
-
-  if (fid !== undefined && (!Number.isInteger(fid) || fid <= 0)) {
-    return c.json({ error: "fid must be a positive integer" }, 400);
-  }
-
-  const cast: ArchCast = {
-    id: crypto.randomUUID(),
-    archId,
-    text: body.text.trim(),
-    dotAnky: optionalString(body.dotAnky),
-    fid,
-    username: optionalString(body.username),
-    parentId: optionalString(body.parentId),
-    status: "local",
-    createdAt: new Date().toISOString(),
-  };
-
-  casts.push(cast);
-
-  return c.json({ cast }, 201);
+  return c.json(
+    {
+      error: "Farcaster publishing is not implemented yet",
+      message:
+        "Arches data must map 1:1 to Farcaster data. Local-only casts are rejected.",
+    },
+    501,
+  );
 });
 
 function optionalString(value: unknown): string | undefined {

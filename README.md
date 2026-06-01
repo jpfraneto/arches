@@ -220,12 +220,13 @@ experimental discount, but it does not collect payment or verify transfers.
 
 ## v0 Limitations
 
-- Casts are stored in memory in the API process.
-- New casts are marked `local`; Farcaster publishing is not implemented yet.
+- Farcaster publishing is not implemented yet.
+- `POST /api/casts` rejects local-only casts until Farcaster publishing is
+  wired.
+- The Arch feed must map 1:1 to Farcaster data; local-only Arch posts are not
+  accepted.
 - Admin verification is not implemented yet.
 - Payment, licensing, $ARCHES discount settlement, and onchain payment
   verification are not implemented yet.
-- Production persistence is deferred while the API still uses the in-memory
-  cast store.
 - The local read plane is scoped to casts created through an Arch. It is not a
   global Farcaster indexer.
