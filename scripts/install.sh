@@ -7,11 +7,15 @@ INSTALL_MODE="vps"
 ARCH_ADMIN_FID=""
 ARCH_SUPPORT_EMAIL=""
 CLOUDFLARE_TUNNEL_TOKEN="${CLOUDFLARE_TUNNEL_TOKEN:-}"
+ARCHES_SETUP_BROKER_URL="${ARCHES_SETUP_BROKER_URL:-https://setup.arches.lat}"
 ASSUME_YES=0
+ORIGINAL_ARG_COUNT=$#
 
 usage() {
   cat <<'USAGE'
 Usage:
+  bash scripts/install.sh
+
   bash scripts/install.sh \
     --arch anky \
     --domain anky.arches.lat \
@@ -22,6 +26,9 @@ Usage:
     [--yes]
 
 Options:
+  With no options, start a zero-info setup session through the Arches setup
+  broker. Set ARCHES_SETUP_BROKER_URL to use a local broker while testing.
+
   --arch        Lowercase URL-safe community slug.
   --domain      Hostname for this Arch. Defaults to localhost in --mode local.
   --mode        Install mode: local, tunnel-local, vps, or existing-proxy.
@@ -43,6 +50,45 @@ need_value() {
   [ $# -gt 1 ] || die "$1 requires a value"
   [ -n "$2" ] || die "$1 requires a non-empty value"
 }
+
+start_zero_info_setup() {
+  local broker_url endpoint
+
+  command -v curl >/dev/null 2>&1 || die "curl is required for zero-info setup"
+
+  broker_url="${ARCHES_SETUP_BROKER_URL%/}"
+  endpoint="$broker_url/api/setup/sessions/terminal"
+
+  cat <<EOF
+Starting Arches setup through:
+  $broker_url
+
+EOF
+
+  if ! curl -fsSL -X POST "$endpoint"; then
+    cat >&2 <<EOF
+
+Error: could not start an Arches setup session.
+
+The setup broker is the Discourse-style control plane for the zero-info flow.
+It creates the setup session, shows the Farcaster verification step, and will
+eventually derive the host FID from a real Farcaster signature.
+
+For local broker testing:
+  ARCHES_SETUP_BROKER_URL=http://localhost:3020 bash scripts/install.sh
+
+For explicit appliance generation, keep using:
+  bash scripts/install.sh --arch anky --mode local --admin-fid 123 --email support@example.com
+
+EOF
+    exit 1
+  fi
+}
+
+if [ "$ORIGINAL_ARG_COUNT" = "0" ]; then
+  start_zero_info_setup
+  exit 0
+fi
 
 while [ $# -gt 0 ]; do
   case "$1" in

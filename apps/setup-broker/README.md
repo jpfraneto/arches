@@ -21,6 +21,12 @@ Create a session:
 curl -fsSL -X POST http://localhost:3020/api/setup/sessions
 ```
 
+Create a terminal-rendered session for the installer:
+
+```bash
+curl -fsSL -X POST http://localhost:3020/api/setup/sessions/terminal
+```
+
 Start a browser setup session:
 
 ```bash

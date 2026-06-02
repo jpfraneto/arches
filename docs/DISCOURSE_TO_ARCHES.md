@@ -301,7 +301,8 @@ remains blocked until Farcaster publishing has been verified.
 4. Add Neynar channel lookup for eligible channels.
 5. Add slug reservation for `*.arches.lat`.
 6. Move Cloudflare Tunnel provisioning behind the broker.
-7. Teach `scripts/install.sh` to call the broker when no flags are passed.
+7. Teach `scripts/install.sh` to call the broker when no flags are passed
+   (started with the terminal session handoff).
 8. Add unclaimed-subdomain page and wildcard routing.
 9. Wire Hypersnap Lite publish probe and signer storage.
 10. Enable posting only when the publish contract is confirmed.

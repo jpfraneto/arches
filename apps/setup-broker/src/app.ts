@@ -60,6 +60,13 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     return c.json(sessionResponse(state, publicOrigin), 201);
   });
 
+  app.post("/api/setup/sessions/terminal", (c) => {
+    const state = createSetupSession(publicOrigin);
+    const response = sessionResponse(state, publicOrigin);
+
+    return c.text(`${response.terminal}\n\nBrowser setup: ${response.setupUrl}\n`);
+  });
+
   app.get("/setup", (c) => {
     const state = createSetupSession(publicOrigin);
     return c.redirect(`/setup/${state.sessionId}`, 302);

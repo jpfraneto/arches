@@ -81,6 +81,17 @@ Farcaster signature, reserve a default `*.arches.lat` hostname, provision a
 Cloudflare Tunnel, and start the local appliance. No admin verification should
 be faked.
 
+The installer now has the first broker handoff scaffold. With no flags, it
+calls the setup broker instead of asking for `--arch`:
+
+```bash
+ARCHES_SETUP_BROKER_URL=http://localhost:3020 bash scripts/install.sh
+```
+
+The broker returns the Discourse-style setup state as terminal text plus a
+browser setup URL. Farcaster verification still returns `501`, so this path does
+not generate appliance files or enable posting yet.
+
 Arches is the seed, not the host identity. Each Arch is held up by the person or
 community running that appliance. Any app/factory Farcaster credential used by
 Arches may only request signer approval during setup; it must not become the FID
@@ -232,6 +243,15 @@ Test the setup broker:
 ```bash
 cd apps/setup-broker
 bun test
+```
+
+Test the no-argument installer handoff locally:
+
+```bash
+cd apps/setup-broker
+bun run src/index.ts
+
+ARCHES_SETUP_BROKER_URL=http://localhost:3020 bash scripts/install.sh
 ```
 
 ## Experimental $ARCHES Discount

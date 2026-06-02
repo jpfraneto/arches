@@ -36,6 +36,17 @@ describe("setup broker", () => {
     expect(await terminalResponse.text()).toContain("Current step: Verify Farcaster");
   });
 
+  test("creates a setup session as terminal text for the installer", async () => {
+    const app = createSetupBrokerApp({ publicOrigin: "https://setup.arches.test" });
+    const response = await app.request("/api/setup/sessions/terminal", { method: "POST" });
+    const text = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(text).toContain("Arches setup: setup_");
+    expect(text).toContain("Current step: Verify Farcaster");
+    expect(text).toContain("Browser setup: https://setup.arches.test/setup/setup_");
+  });
+
   test("does not fake Farcaster verification", async () => {
     const app = createSetupBrokerApp();
     const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
