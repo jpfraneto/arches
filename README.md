@@ -2,6 +2,9 @@
 
 Arches lets any community create its own Farcaster client in one command.
 
+Read `ARCHES.md` for the product philosophy, identity model, and Discourse
+inspiration behind the project.
+
 An Arch is a custom social surface for one community. It has its own domain,
 feed, interface, posting grammar, and provenance. The Arches feed only shows
 casts created through that Arch.
