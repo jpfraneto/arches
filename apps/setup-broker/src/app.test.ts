@@ -187,6 +187,44 @@ describe("setup broker", () => {
     expect(JSON.stringify(snapshot)).not.toContain("ARCH_DOMAIN");
   });
 
+  test("keeps sanitized setup store snapshots disabled by default", async () => {
+    const app = createSetupBrokerApp();
+    const response = await app.request("/api/setup/store/snapshot");
+    const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(body.error).toBe("setup store snapshots are disabled");
+  });
+
+  test("serves sanitized setup store snapshots in dev mode", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({
+        hostFid: 18350,
+        signerRequestUrl: "farcaster://signer-request?token=signer_123",
+        farcasterChannelToken: "channel_123",
+        installCommand:
+          "curl -fsSL https://install.arches.lat | bash -s -- --tunnel-token 'fake-token'",
+        archConfigEnv: "ARCH_DOMAIN=anky.arches.lat",
+      }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await app.request("/api/setup/store/snapshot");
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.schemaVersion).toBe(1);
+    expect(body.sessions[created.session.sessionId].state.hostFid).toBe(18350);
+    expect(JSON.stringify(body)).not.toContain("signer_123");
+    expect(JSON.stringify(body)).not.toContain("channel_123");
+    expect(JSON.stringify(body)).not.toContain("fake-token");
+    expect(JSON.stringify(body)).not.toContain("ARCH_DOMAIN");
+  });
+
   test("creates a setup session as terminal text for the installer", async () => {
     const app = createSetupBrokerApp({ publicOrigin: "https://setup.arches.test" });
     const response = await app.request("/api/setup/sessions/terminal", { method: "POST" });

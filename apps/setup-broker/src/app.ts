@@ -30,6 +30,7 @@ import {
 } from "./signer-approval";
 import {
   createInMemorySetupBrokerStore,
+  snapshotSetupBrokerStore,
   type SetupBrokerStore,
   type SetupStoreMap,
 } from "./setup-store";
@@ -241,6 +242,18 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     if (!record) return c.json({ error: "setup session not found" }, 404);
 
     return c.json({ events: record.events });
+  });
+
+  app.get("/api/setup/store/snapshot", (c) => {
+    if (!allowDevStateUpdates) {
+      return c.json({ error: "setup store snapshots are disabled" }, 404);
+    }
+
+    return c.json(
+      snapshotSetupBrokerStore(setupStore, {
+        sanitizeSession: sanitizeSetupSessionRecordForPersistence,
+      }),
+    );
   });
 
   app.get("/api/setup/sessions/:sessionId/terminal", (c) => {

@@ -337,6 +337,8 @@ The broker also has a sanitized store snapshot boundary: it can retain durable
 session facts, reservations, and audit events while dropping signer request
 tokens, Farcaster relay tokens, generated installer commands, and generated env
 output before any future disk or database adapter persists state.
+That sanitized snapshot is exposed only through a dev-mode endpoint for local
+inspection; production persistence still needs an authenticated durable adapter.
 It also supports field-level error descriptions so browser submissions can stay
 inside the wizard when validation fails.
 

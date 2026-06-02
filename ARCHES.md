@@ -306,6 +306,7 @@ Implemented scaffolding in this repo:
 - injectable in-memory setup store adapter boundary for sessions, reservations,
   and signer request tokens
 - sanitized setup store snapshot boundary that drops volatile delivery fields
+- dev-only sanitized setup store snapshot endpoint
 
 Not implemented yet:
 

@@ -189,6 +189,16 @@ signer request URLs, generated install commands, and generated env output. This
 is the safe persistence boundary to preserve before adding a real disk or
 database adapter.
 
+For local development only, enable `ARCHES_SETUP_BROKER_DEV=1` and inspect the
+sanitized snapshot with:
+
+```bash
+curl -fsSL http://localhost:3020/api/setup/store/snapshot
+```
+
+This endpoint is disabled by default and must not be treated as production
+backup storage.
+
 The broker now also derives step provenance from those events. Completed steps
 in the session schema can include `completedAt`, `completedByFid`,
 `completionEventId`, and `completionEventType`, and the browser sidebar renders
