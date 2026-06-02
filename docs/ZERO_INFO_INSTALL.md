@@ -170,8 +170,8 @@ eventually call this broker when it receives no arguments. The current setup
 broker has a Farcaster verification provider boundary with a per-session
 nonce/domain challenge. It can verify SIWF messages through the official
 Farcaster auth client when `ARCHES_FARCASTER_VERIFIER=auth-client`, including
-auth relay channel creation and status polling; the default verifier still
-fails closed with `501`.
+auth relay channel creation, inline QR rendering, and browser status polling;
+the default verifier still fails closed with `501`.
 
 ## Broker Provisioning Scaffold
 

@@ -292,8 +292,9 @@ includes a Farcaster verification provider boundary that rejects manual identity
 claims. It can use the official Farcaster auth-client verifier when
 `ARCHES_FARCASTER_VERIFIER=auth-client`; in that mode it creates Farcaster auth
 relay channels, stores the relay URL on the setup session, polls channel status,
-and verifies completed SIWF messages before deriving the host FID. Otherwise the
-default verification provider intentionally returns `501`.
+verifies completed SIWF messages before deriving the host FID, and renders an
+inline QR with browser auto-polling on the setup page. Otherwise the default
+verification provider intentionally returns `501`.
 
 `packages/setup-schema` now contains the first concrete version of this shape:
 renderer-neutral setup steps, fields, choices, completion state, submission
@@ -337,8 +338,8 @@ Cloudflare routing, and appliance config as the underlying infra.
    `apps/setup-broker`).
 4. Add Farcaster QR verification and host FID derivation (provider boundary,
    auth-client SIWF verifier, relay-channel creation, and status polling started
-   in `apps/setup-broker`; production QR rendering and browser auto-polling UX
-   still needed).
+   in `apps/setup-broker`; inline QR rendering and browser auto-polling
+   scaffold started; production recovery and mobile handoff UX still needed).
 5. Add Neynar channel lookup for eligible channels (adapter started in
    `apps/setup-broker`).
 6. Add slug reservation for `*.arches.lat` (started with in-memory reservation

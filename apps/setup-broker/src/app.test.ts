@@ -180,8 +180,12 @@ describe("setup broker", () => {
     );
     expect(body.next.channelStatus).toBe("pending");
     expect(body.events.map((event) => event.type)).toContain("farcaster_channel_created");
+    expect(html).toContain('<div class="qr-code">');
+    expect(html).toContain("<svg");
     expect(html).toContain('class="qr-link"');
     expect(html).toContain('href="farcaster://connect?channelToken=channel_123"');
+    expect(html).toContain("data-farcaster-autopoll-status");
+    expect(html).toContain(`/api/setup/sessions/" + encodeURIComponent(sessionId) + "/farcaster/status`);
   });
 
   test("polls a pending Farcaster auth channel without deriving a host FID", async () => {

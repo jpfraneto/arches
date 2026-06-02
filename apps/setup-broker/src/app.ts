@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import * as QRCode from "qrcode";
 import { buildArchConfigSnapshot, renderEnvSnapshot } from "./arch-config";
 import {
   createChannelEligibilityProvider,
@@ -158,11 +159,11 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     return c.redirect(`/setup/${state.sessionId}`, 302);
   });
 
-  app.get("/setup/:sessionId", (c) => {
+  app.get("/setup/:sessionId", async (c) => {
     const record = sessions.get(c.req.param("sessionId"));
     if (!record) return c.html(renderMissingSessionHtml(), 404);
 
-    return c.html(renderSetupHtml(buildSetupSession(record.state), record.events));
+    return c.html(await renderSetupHtml(buildSetupSession(record.state), record.events));
   });
 
   app.get("/api/setup/sessions/:sessionId", (c) => {
@@ -1383,8 +1384,14 @@ function tunnelProvisioningReadiness(state: SetupState): TunnelProvisioningReadi
   return { ok: true };
 }
 
-function renderSetupHtml(session: SetupSession, events: SetupAuditEvent[]): string {
+async function renderSetupHtml(
+  session: SetupSession,
+  events: SetupAuditEvent[],
+): Promise<string> {
   const currentStep = session.steps.find((step) => step.id === session.currentStepId);
+  const shouldPollFarcaster =
+    currentStep?.id === "verify-farcaster" &&
+    events.some((event) => event.type === "farcaster_channel_created");
 
   return `<!doctype html>
 <html lang="en">
@@ -1589,6 +1596,7 @@ function renderSetupHtml(session: SetupSession, events: SetupAuditEvent[]): stri
     .qr-link {
       display: inline-flex;
       align-items: center;
+      width: fit-content;
       min-height: 38px;
       padding: 0 12px;
       border-radius: 6px;
@@ -1597,6 +1605,26 @@ function renderSetupHtml(session: SetupSession, events: SetupAuditEvent[]): stri
       font-weight: 650;
       text-decoration: none;
       overflow-wrap: anywhere;
+    }
+
+    .qr-code {
+      width: 192px;
+      max-width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      background: #fff;
+    }
+
+    .qr-code svg {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .poll-status {
+      color: var(--muted);
+      font-size: 13px;
     }
 
     pre {
@@ -1658,10 +1686,11 @@ function renderSetupHtml(session: SetupSession, events: SetupAuditEvent[]): stri
       ${renderSetupEvents(events)}
     </aside>
     <section>
-      ${currentStep ? renderCurrentStep(session.sessionId, currentStep) : ""}
-      <div class="notice">Farcaster verification is not wired yet. Posting and composer unlock remain blocked.</div>
+      ${currentStep ? await renderCurrentStep(session.sessionId, currentStep, shouldPollFarcaster) : ""}
+      <div class="notice">Posting and composer unlock remain blocked until signer approval and Farcaster publishing are verified.</div>
     </section>
   </main>
+  ${shouldPollFarcaster ? renderFarcasterPollingScript(session.sessionId) : ""}
 </body>
 </html>`;
 }
@@ -1838,22 +1867,32 @@ function eventDetail(event: SetupAuditEvent): string {
   }
 }
 
-function renderCurrentStep(sessionId: string, step: SetupStep): string {
+async function renderCurrentStep(
+  sessionId: string,
+  step: SetupStep,
+  shouldPollFarcaster = false,
+): Promise<string> {
   const canSubmit = isSubmittableStep(step);
+  const fields = await Promise.all(step.fields.map((field) => renderField(field, canSubmit)));
 
   return `<div class="surface step-surface-${escapeHtml(step.id)}">
     <h2>${escapeHtml(step.title)}</h2>
     <p class="description">${escapeHtml(step.description)}</p>
     <form method="post" action="/setup/${escapeHtml(sessionId)}/steps/${escapeHtml(step.id)}">
       <div class="fields">
-        ${step.fields.map((field) => renderField(field, canSubmit)).join("")}
+        ${fields.join("")}
       </div>
       ${canSubmit ? `<div class="actions"><button type="submit">Continue</button></div>` : ""}
     </form>
+    ${
+      shouldPollFarcaster
+        ? `<p class="poll-status" data-farcaster-autopoll-status>Waiting for Farcaster signature...</p>`
+        : ""
+    }
   </div>`;
 }
 
-function renderField(field: SetupField, editable = false): string {
+async function renderField(field: SetupField, editable = false): Promise<string> {
   switch (field.type) {
     case "radio":
       return renderChoiceField(field, editable);
@@ -1933,16 +1972,66 @@ function renderStatusField(field: SetupField): string {
   </div>`;
 }
 
-function renderQrField(field: SetupField): string {
+async function renderQrField(field: SetupField): Promise<string> {
+  const qrSvg = field.value ? await renderQrSvg(field.value) : "";
+
   return `<div class="field qr-field field-${escapeHtml(field.id)}">
     <label>${escapeHtml(requiredLabel(field))}</label>
     ${
       field.value
-        ? `<a class="qr-link" href="${escapeHtml(field.value)}">${escapeHtml(field.value)}</a>`
+        ? `<div class="qr-code">${qrSvg}</div><a class="qr-link" href="${escapeHtml(field.value)}">${escapeHtml(
+            field.value,
+          )}</a>`
         : `<span class="status">waiting</span>`
     }
     ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ""}
   </div>`;
+}
+
+async function renderQrSvg(value: string): Promise<string> {
+  return QRCode.toString(value, {
+    type: "svg",
+    width: 192,
+    margin: 1,
+    errorCorrectionLevel: "M",
+  });
+}
+
+function renderFarcasterPollingScript(sessionId: string): string {
+  return `<script>
+(() => {
+  const sessionId = ${safeJsonString(sessionId)};
+  const statusEl = document.querySelector("[data-farcaster-autopoll-status]");
+  let stopped = false;
+
+  async function poll() {
+    if (stopped) return;
+
+    try {
+      const response = await fetch("/api/setup/sessions/" + encodeURIComponent(sessionId) + "/farcaster/status", {
+        method: "POST"
+      });
+      const body = await response.json();
+
+      if (response.ok && body.session?.currentStepId && body.session.currentStepId !== "verify-farcaster") {
+        stopped = true;
+        window.location.reload();
+        return;
+      }
+
+      if (!response.ok && statusEl) {
+        statusEl.textContent = body.message || "Farcaster verification is not ready.";
+      }
+    } catch {
+      if (statusEl) statusEl.textContent = "Waiting for Farcaster verification...";
+    }
+
+    window.setTimeout(poll, 2000);
+  }
+
+  window.setTimeout(poll, 1200);
+})();
+</script>`;
 }
 
 function renderCopyField(field: SetupField): string {
@@ -2024,4 +2113,8 @@ function escapeHtml(value: string): string {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function safeJsonString(value: string): string {
+  return JSON.stringify(value).replaceAll("<", "\\u003c");
 }

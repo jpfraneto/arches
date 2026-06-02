@@ -96,6 +96,10 @@ official Farcaster auth client. The default provider still returns `501`, so
 this path does not generate appliance files or enable posting until a verifier
 is configured.
 
+When the auth-client verifier is active, the browser setup page renders the
+relay URL as an inline QR and auto-polls the session until the Farcaster
+signature advances setup to signer preparation.
+
 The setup broker also renders unclaimed `*.arches.lat` hostnames as creation
 invitations. Visiting an unclaimed Arch should point the host toward Farcaster
 verification rather than accepting a manual admin claim.

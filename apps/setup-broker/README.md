@@ -23,7 +23,8 @@ nonce to match the setup session nonce before calling the verifier.
 
 When the auth-client verifier is enabled, new setup sessions ask the Farcaster
 auth relay for a sign-in channel. The session's Farcaster QR field becomes the
-relay URL that should be opened or rendered as a QR code for the host.
+relay URL. The browser setup page renders that URL as an inline QR plus a link
+and auto-polls the channel status until the verified FID advances setup.
 
 Run locally:
 
