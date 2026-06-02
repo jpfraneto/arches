@@ -33,6 +33,12 @@ Start a browser setup session:
 open http://localhost:3020/setup
 ```
 
+Render an unclaimed Arch page:
+
+```bash
+curl -H 'Host: anky.arches.lat' http://localhost:3020/
+```
+
 Render terminal output:
 
 ```bash

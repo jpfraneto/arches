@@ -69,6 +69,47 @@ describe("setup broker", () => {
     expect(response.headers.get("location")).toStartWith("/setup/setup_");
   });
 
+  test("renders an unclaimed Arch page from wildcard host", async () => {
+    const app = createSetupBrokerApp();
+    const response = await app.request("/", {
+      headers: { host: "anky.arches.lat" },
+    });
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(html).toContain("<title>anky.arches.lat is unclaimed</title>");
+    expect(html).toContain("curl -fsSL https://install.arches.lat | bash");
+    expect(html).toContain("/setup?requested=anky");
+    expect(html).toContain("Arches will not accept a manual admin claim.");
+  });
+
+  test("does not treat reserved Arches subdomains as unclaimed communities", async () => {
+    const app = createSetupBrokerApp();
+    const response = await app.request("/", {
+      headers: { host: "install.arches.lat" },
+      redirect: "manual",
+    });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe("/setup");
+  });
+
+  test("passes requested unclaimed slug into browser setup session", async () => {
+    const app = createSetupBrokerApp();
+    const redirect = await app.request("/setup?requested=anky", { redirect: "manual" });
+    const location = redirect.headers.get("location");
+
+    expect(redirect.status).toBe(302);
+    expect(location).toStartWith("/setup/setup_");
+
+    const response = await app.request(location!);
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(html).toContain("Requested Arch: anky.arches.lat");
+    expect(html).toContain("host FID for anky.arches.lat");
+  });
+
   test("renders browser setup page without admin FID input", async () => {
     const app = createSetupBrokerApp();
     const createResponse = await app.request("/api/setup/sessions", { method: "POST" });

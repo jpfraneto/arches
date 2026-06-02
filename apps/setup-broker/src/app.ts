@@ -31,6 +31,7 @@ type SessionResponse = {
 };
 
 const sessions = new Map<string, SessionRecord>();
+const RESERVED_ARCHES_SUBDOMAINS = new Set(["install", "setup", "www"]);
 
 export function createSetupBrokerApp(options: BrokerOptions = {}) {
   const app = new Hono();
@@ -54,8 +55,16 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     });
   });
 
+  app.get("/", (c) => {
+    const requestedSlug = requestedSlugFromHost(c.req.header("host"));
+    if (requestedSlug) return c.html(renderUnclaimedArchHtml(requestedSlug));
+
+    return c.redirect("/setup", 302);
+  });
+
   app.post("/api/setup/sessions", (c) => {
-    const state = createSetupSession(publicOrigin);
+    const requestedSlug = normalizeSlug(c.req.query("requested"));
+    const state = createSetupSession(publicOrigin, requestedSlug);
 
     return c.json(sessionResponse(state, publicOrigin), 201);
   });
@@ -68,7 +77,8 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
   });
 
   app.get("/setup", (c) => {
-    const state = createSetupSession(publicOrigin);
+    const requestedSlug = normalizeSlug(c.req.query("requested"));
+    const state = createSetupSession(publicOrigin, requestedSlug);
     return c.redirect(`/setup/${state.sessionId}`, 302);
   });
 
@@ -141,11 +151,12 @@ export function resetSetupBrokerSessionsForTests() {
   sessions.clear();
 }
 
-function createSetupSession(publicOrigin: string): SetupState {
+function createSetupSession(publicOrigin: string, requestedSlug?: string): SetupState {
   const sessionId = createSessionId();
   const now = new Date().toISOString();
   const state: SetupState = {
     sessionId,
+    requestedSlug,
     farcasterQrUrl: `${publicOrigin}/api/setup/sessions/${sessionId}/farcaster/verify`,
   };
 
@@ -384,6 +395,7 @@ function renderSetupHtml(session: SetupSession): string {
     <aside>
       <h1>Arches Setup</h1>
       <div class="session">${escapeHtml(session.sessionId)}</div>
+      ${renderRequestedSlug(session)}
       <div class="session">Current step: ${escapeHtml(currentStep?.title ?? session.currentStepId)}</div>
       <ol class="steps">
         ${session.steps.map(renderProgressStep).join("")}
@@ -393,6 +405,86 @@ function renderSetupHtml(session: SetupSession): string {
       ${currentStep ? renderCurrentStep(currentStep) : ""}
       <div class="notice">Farcaster verification is not wired yet. Posting and composer unlock remain blocked.</div>
     </section>
+  </main>
+</body>
+</html>`;
+}
+
+function renderUnclaimedArchHtml(slug: string): string {
+  const host = `${slug}.arches.lat`;
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(host)} is unclaimed</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #161616;
+      --muted: #62666d;
+      --line: #d7d9dd;
+      --bg: #f7f7f4;
+      --panel: #ffffff;
+      --accent: #0f6b5f;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      width: min(100%, 760px);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 32px;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: 28px;
+      line-height: 1.15;
+      letter-spacing: 0;
+    }
+
+    p { color: var(--muted); }
+
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      padding: 14px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      background: #f4f4f1;
+    }
+
+    a {
+      color: var(--accent);
+      font-weight: 650;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>${escapeHtml(host)} is unclaimed</h1>
+    <p>This Arch does not exist yet. To host it, start setup and verify with Farcaster. Arches will not accept a manual admin claim.</p>
+    <pre>curl -fsSL https://install.arches.lat | bash</pre>
+    <p><a href="/setup?requested=${encodeURIComponent(slug)}">Start browser setup for ${escapeHtml(host)}</a></p>
   </main>
 </body>
 </html>`;
@@ -410,6 +502,12 @@ function renderMissingSessionHtml(): string {
   <h1>Setup session not found</h1>
 </body>
 </html>`;
+}
+
+function renderRequestedSlug(session: SetupSession): string {
+  return session.requestedSlug
+    ? `<div class="session">Requested Arch: ${escapeHtml(`${session.requestedSlug}.arches.lat`)}</div>`
+    : "";
 }
 
 function renderProgressStep(step: SetupStep): string {
@@ -510,6 +608,25 @@ function statusGlyph(status: SetupStep["status"]): string {
     case "pending":
       return "";
   }
+}
+
+function requestedSlugFromHost(hostHeader: string | undefined): string | undefined {
+  if (!hostHeader) return undefined;
+
+  const host = hostHeader.split(":")[0].toLowerCase();
+  if (!host.endsWith(".arches.lat")) return undefined;
+
+  const slug = host.slice(0, -".arches.lat".length);
+  if (!slug || slug.includes(".") || RESERVED_ARCHES_SUBDOMAINS.has(slug)) return undefined;
+
+  return normalizeSlug(slug);
+}
+
+function normalizeSlug(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+
+  const slug = value.trim().toLowerCase();
+  return /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(slug) ? slug : undefined;
 }
 
 function escapeHtml(value: string): string {

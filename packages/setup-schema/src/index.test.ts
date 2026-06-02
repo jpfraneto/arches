@@ -23,6 +23,18 @@ describe("buildSetupSession", () => {
     expect(findStep(session, "unlock-arch")?.status).toBe("blocked");
   });
 
+  test("carries requested unclaimed slug into Farcaster verification copy", () => {
+    const session = buildSetupSession({
+      sessionId: "setup_requested",
+      requestedSlug: "anky",
+    });
+
+    expect(session.requestedSlug).toBe("anky");
+    expect(findStep(session, "verify-farcaster")?.description).toContain(
+      "host FID for anky.arches.lat",
+    );
+  });
+
   test("renders eligible channels as radio choices after signer approval", () => {
     const session = buildSetupSession({
       sessionId: "setup_2",

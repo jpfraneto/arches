@@ -92,6 +92,10 @@ The broker returns the Discourse-style setup state as terminal text plus a
 browser setup URL. Farcaster verification still returns `501`, so this path does
 not generate appliance files or enable posting yet.
 
+The setup broker also renders unclaimed `*.arches.lat` hostnames as creation
+invitations. Visiting an unclaimed Arch should point the host toward Farcaster
+verification rather than accepting a manual admin claim.
+
 Arches is the seed, not the host identity. Each Arch is held up by the person or
 community running that appliance. Any app/factory Farcaster credential used by
 Arches may only request signer approval during setup; it must not become the FID

@@ -283,8 +283,9 @@ The broker is allowed to coordinate. It is not allowed to own every Arch.
 
 `apps/setup-broker` now contains the first in-memory session API for this model.
 It creates setup sessions, serves schema JSON, serves terminal output, serves a
-focused browser setup page at `/setup`, and intentionally returns `501` for
-Farcaster verification instead of accepting a manual admin FID.
+focused browser setup page at `/setup`, renders unclaimed `*.arches.lat`
+hostnames as setup invitations, and intentionally returns `501` for Farcaster
+verification instead of accepting a manual admin FID.
 
 `packages/setup-schema` now contains the first concrete version of this shape:
 renderer-neutral setup steps, fields, choices, completion state, submission
@@ -303,7 +304,8 @@ remains blocked until Farcaster publishing has been verified.
 6. Move Cloudflare Tunnel provisioning behind the broker.
 7. Teach `scripts/install.sh` to call the broker when no flags are passed
    (started with the terminal session handoff).
-8. Add unclaimed-subdomain page and wildcard routing.
+8. Add unclaimed-subdomain page and wildcard routing (started in
+   `apps/setup-broker`).
 9. Wire Hypersnap Lite publish probe and signer storage.
 10. Enable posting only when the publish contract is confirmed.
 

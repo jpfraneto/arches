@@ -49,6 +49,7 @@ export type EligibleChannel = {
 
 export type SetupState = {
   sessionId: string;
+  requestedSlug?: string;
   farcasterQrUrl?: string;
   hostFid?: number;
   signerApproved?: boolean;
@@ -68,6 +69,7 @@ export type SetupState = {
 
 export type SetupSession = {
   sessionId: string;
+  requestedSlug?: string;
   start: SetupStepId;
   currentStepId: SetupStepId;
   completed: boolean;
@@ -121,6 +123,7 @@ export function buildSetupSession(state: SetupState): SetupSession {
 
   return {
     sessionId: state.sessionId,
+    requestedSlug: state.requestedSlug,
     start,
     currentStepId,
     completed: steps.every((step) => step.status === "completed"),
@@ -198,10 +201,14 @@ export function renderTerminalStep(step: SetupStep): string {
 }
 
 function verifyFarcasterStep(state: SetupState): SetupStep {
+  const requestedArch = state.requestedSlug ? `${state.requestedSlug}.arches.lat` : null;
+
   return {
     id: "verify-farcaster",
     title: "Verify Farcaster",
-    description: "Scan with a Farcaster client so Arches can derive the host FID.",
+    description: requestedArch
+      ? `Scan with a Farcaster client so Arches can derive the host FID for ${requestedArch}.`
+      : "Scan with a Farcaster client so Arches can derive the host FID.",
     status: state.hostFid ? "completed" : "active",
     fields: [
       {
