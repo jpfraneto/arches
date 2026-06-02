@@ -1,4 +1,13 @@
-import type { HostingMode, SetupState } from "../../../packages/setup-schema/src/index";
+import {
+  DEFAULT_GRAMMAR_PRESET,
+  DEFAULT_SURFACE_PRESET,
+  DEFAULT_THEME_PRESET,
+  type GrammarPreset,
+  type HostingMode,
+  type SetupState,
+  type SurfacePreset,
+  type ThemePreset,
+} from "../../../packages/setup-schema/src/index";
 
 export type ArchConfigSnapshot = {
   version: 1;
@@ -8,6 +17,9 @@ export type ArchConfigSnapshot = {
     domain: string;
     title: string;
     provenanceLabel: string;
+    surfacePreset: SurfacePreset;
+    grammarPreset: GrammarPreset;
+    themePreset: ThemePreset;
     hostFid: number;
     supportEmail: string;
   };
@@ -88,12 +100,18 @@ export function buildArchConfigSnapshot(state: SetupState): ArchConfigResult {
   }
 
   const supportEmail = DEFAULT_SUPPORT_EMAIL;
+  const surfacePreset = state.surfacePreset ?? DEFAULT_SURFACE_PRESET;
+  const grammarPreset = state.grammarPreset ?? DEFAULT_GRAMMAR_PRESET;
+  const themePreset = state.themePreset ?? DEFAULT_THEME_PRESET;
   const env: Record<string, string> = {
     ARCH_SLUG: state.reservedSlug,
     ARCH_DOMAIN: state.domain,
     ARCHES_MODE: state.hostingMode,
     ARCH_ADMIN_FID: String(state.hostFid),
     ARCH_SUPPORT_EMAIL: supportEmail,
+    ARCH_SURFACE_PRESET: surfacePreset,
+    ARCH_GRAMMAR_PRESET: grammarPreset,
+    ARCH_THEME_PRESET: themePreset,
     ARCH_SURFACE_TITLE: state.surfaceTitle,
     ARCH_PROVENANCE_LABEL: state.provenanceLabel,
     ARCHES_PUBLISHING_ENABLED: "false",
@@ -112,6 +130,9 @@ export function buildArchConfigSnapshot(state: SetupState): ArchConfigResult {
         domain: state.domain,
         title: state.surfaceTitle,
         provenanceLabel: state.provenanceLabel,
+        surfacePreset,
+        grammarPreset,
+        themePreset,
         hostFid: state.hostFid,
         supportEmail,
       },

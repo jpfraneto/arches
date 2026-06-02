@@ -19,6 +19,9 @@ The API reads the first surface defaults from appliance env:
 ```env
 ARCH_SURFACE_TITLE=/anky
 ARCH_PROVENANCE_LABEL=posted via anky
+ARCH_SURFACE_PRESET=village
+ARCH_GRAMMAR_PRESET=open-casts
+ARCH_THEME_PRESET=daylight
 ```
 
 These values are produced by the setup broker config snapshot and by the

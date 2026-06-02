@@ -307,9 +307,16 @@ secrets, mnemonic material, API tokens, tunnel tokens, or full install commands.
 The broker also exports the first Arch config snapshot. This is the Arches
 equivalent of Discourse applying wizard fields into `SiteSetting`: verified
 session state becomes appliance config fields such as `ARCH_SLUG`,
-`ARCH_DOMAIN`, `ARCH_ADMIN_FID`, `ARCH_SURFACE_TITLE`, and
+`ARCH_DOMAIN`, `ARCH_ADMIN_FID`, `ARCH_SURFACE_PRESET`,
+`ARCH_GRAMMAR_PRESET`, `ARCH_THEME_PRESET`, `ARCH_SURFACE_TITLE`, and
 `ARCH_PROVENANCE_LABEL`. The snapshot is intentionally non-secret and does not
 carry tunnel tokens or signer material.
+
+The first configure-surface choices now mirror the useful Discourse category
+setup pattern: pick the kind of space before detailed configuration. Arches
+starts with surface presets (`village`, `bulletin`, `library`), grammar presets
+(`open-casts`, `curated-updates`, `knowledge-base`), and theme presets
+(`daylight`, `high-contrast`, `night`).
 
 ## Implementation Phases
 
@@ -329,12 +336,14 @@ carry tunnel tokens or signer material.
 8. Add setup audit/provenance events (started as in-memory events in
    `apps/setup-broker`).
 9. Add Arch config export from setup state (started in `apps/setup-broker`).
-10. Teach `scripts/install.sh` to call the broker when no flags are passed
+10. Add community surface/grammar/theme presets (started in
+   `packages/setup-schema` and exported by `apps/setup-broker`).
+11. Teach `scripts/install.sh` to call the broker when no flags are passed
    (started with the terminal session handoff).
-11. Add unclaimed-subdomain page and wildcard routing (started in
+12. Add unclaimed-subdomain page and wildcard routing (started in
    `apps/setup-broker`).
-12. Wire Hypersnap Lite publish probe and signer storage.
-13. Enable posting only when the publish contract is confirmed.
+13. Wire Hypersnap Lite publish probe and signer storage.
+14. Enable posting only when the publish contract is confirmed.
 
 ## Product Principle
 

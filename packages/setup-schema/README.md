@@ -15,7 +15,7 @@ The schema enforces the Arches setup order:
 3. Choose an eligible Farcaster channel.
 4. Reserve the Arch hostname.
 5. Choose hosting.
-6. Configure the surface.
+6. Configure the surface type, posting grammar, theme, title, and provenance.
 7. Launch the appliance, including tunnel route status and the explicit install
    command when the broker has provisioned one.
 8. Verify publishing.
@@ -23,6 +23,14 @@ The schema enforces the Arches setup order:
 
 The composer can only be unlocked after Farcaster publishing is verified. Local
 database writes are never treated as valid Arch feed data.
+
+The configure step borrows the useful part of Discourse's category setup model:
+ask what kind of community surface is being created before moving into launch.
+The first presets are:
+
+- surface type: `village`, `bulletin`, `library`
+- posting grammar: `open-casts`, `curated-updates`, `knowledge-base`
+- theme: `daylight`, `high-contrast`, `night`
 
 ## Terminal Renderer
 

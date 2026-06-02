@@ -109,6 +109,9 @@ ARCH_DOMAIN=anky.arches.lat
 ARCHES_MODE=tunnel-local
 ARCH_ADMIN_FID=18350
 ARCH_SUPPORT_EMAIL=support@arches.lat
+ARCH_SURFACE_PRESET=village
+ARCH_GRAMMAR_PRESET=open-casts
+ARCH_THEME_PRESET=daylight
 ARCH_SURFACE_TITLE=/anky
 ARCH_PROVENANCE_LABEL=posted via anky
 ARCHES_PUBLISHING_ENABLED=false
@@ -120,6 +123,10 @@ For `tunnel-local`, export is gated on tunnel provisioning. The snapshot does
 not include the Cloudflare Tunnel token, signer material, mnemonic material, or
 private API tokens. The installer command remains the delivery path for the
 tunnel token until a safer installer handoff is implemented.
+
+The configure step follows the Discourse category-setup idea of choosing the
+kind of space first. Arches currently exposes server-defined choices for surface
+type, posting grammar, and theme; those choices are exported as appliance env.
 
 ## Channel Eligibility
 

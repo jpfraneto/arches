@@ -519,6 +519,49 @@ describe("setup broker", () => {
     expect(body.session.currentStepId).toBe("name-surface");
   });
 
+  test("submits configurable surface presets through the generic step updater", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({
+        hostFid: 18350,
+        signerApproved: true,
+        eligibleChannels: [{ slug: "anky", role: "lead" }],
+        selectedChannelSlug: "anky",
+        reservedSlug: "anky",
+        domain: "anky.arches.lat",
+        hostingMode: "tunnel-local",
+      }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/steps/configure-surface`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          surfacePreset: "bulletin",
+          grammarPreset: "curated-updates",
+          themePreset: "high-contrast",
+          title: "/anky dispatch",
+          provenance: "posted from anky dispatch",
+        }),
+        headers: { "content-type": "application/json" },
+      },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.session.currentStepId).toBe("launch-appliance");
+    expect(body.session.steps[5].fields[0].value).toBe("bulletin");
+    expect(body.session.steps[5].fields[1].value).toBe("curated-updates");
+    expect(body.session.steps[5].fields[2].value).toBe("high-contrast");
+    expect(body.session.steps[5].fields[3].value).toBe("/anky dispatch");
+    expect(body.session.steps[5].fields[4].value).toBe("posted from anky dispatch");
+  });
+
   test("requires a ready tunnel-local setup session before provisioning tunnel", async () => {
     const app = createSetupBrokerApp();
     const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
@@ -706,6 +749,9 @@ describe("setup broker", () => {
       domain: "anky.arches.lat",
       title: "/anky",
       provenanceLabel: "posted via anky",
+      surfacePreset: "village",
+      grammarPreset: "open-casts",
+      themePreset: "daylight",
       hostFid: 18350,
       supportEmail: "support@arches.lat",
     });
@@ -719,6 +765,9 @@ describe("setup broker", () => {
       status: "not_implemented",
     });
     expect(body.env).toContain("ARCH_PROVENANCE_LABEL=posted via anky");
+    expect(body.env).toContain("ARCH_SURFACE_PRESET=village");
+    expect(body.env).toContain("ARCH_GRAMMAR_PRESET=open-casts");
+    expect(body.env).toContain("ARCH_THEME_PRESET=daylight");
     expect(body.env).toContain("CLOUDFLARE_TUNNEL_ID=tunnel_123");
     expect(body.events.at(-1).type).toBe("arch_config_exported");
     expect(JSON.stringify(body)).not.toContain("tunnel-token");
@@ -769,6 +818,9 @@ function readyTunnelProvisioningState() {
     reservedSlug: "anky",
     domain: "anky.arches.lat",
     hostingMode: "tunnel-local",
+    surfacePreset: "village",
+    grammarPreset: "open-casts",
+    themePreset: "daylight",
     surfaceTitle: "/anky",
     provenanceLabel: "posted via anky",
     surfaceConfigured: true,

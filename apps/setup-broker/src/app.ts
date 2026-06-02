@@ -16,12 +16,15 @@ import {
   renderTerminalSession,
   validateStepSubmission,
   type FieldValues,
+  type GrammarPreset,
   type HostingMode,
   type SetupField,
   type SetupSession,
   type SetupState,
   type SetupStep,
   type SetupStepId,
+  type SurfacePreset,
+  type ThemePreset,
 } from "../../../packages/setup-schema/src/index";
 
 type SessionRecord = {
@@ -787,6 +790,9 @@ function applyChooseCommunitySubmission(
       reservedSlug: undefined,
       domain: undefined,
       hostingMode: undefined,
+      surfacePreset: undefined,
+      grammarPreset: undefined,
+      themePreset: undefined,
       surfaceTitle: undefined,
       provenanceLabel: undefined,
       surfaceConfigured: undefined,
@@ -846,6 +852,9 @@ function applyNameSurfaceSubmission(state: SetupState, values: FieldValues): Ste
       reservedSlug: result.slug,
       domain,
       hostingMode: undefined,
+      surfacePreset: undefined,
+      grammarPreset: undefined,
+      themePreset: undefined,
       surfaceTitle: undefined,
       provenanceLabel: undefined,
       surfaceConfigured: undefined,
@@ -875,6 +884,9 @@ function applyChooseHostingSubmission(state: SetupState, values: FieldValues): S
     state: {
       ...state,
       hostingMode: mode,
+      surfacePreset: undefined,
+      grammarPreset: undefined,
+      themePreset: undefined,
       surfaceTitle: undefined,
       provenanceLabel: undefined,
       surfaceConfigured: undefined,
@@ -892,15 +904,18 @@ function applyConfigureSurfaceSubmission(
   state: SetupState,
   values: FieldValues,
 ): StepSubmissionResult {
+  const surfacePreset = values.surfacePreset as SurfacePreset | undefined;
+  const grammarPreset = values.grammarPreset as GrammarPreset | undefined;
+  const themePreset = values.themePreset as ThemePreset | undefined;
   const surfaceTitle = values.title?.trim();
   const provenanceLabel = values.provenance?.trim();
 
-  if (!surfaceTitle || !provenanceLabel) {
+  if (!surfacePreset || !grammarPreset || !themePreset || !surfaceTitle || !provenanceLabel) {
     return {
       ok: false,
       status: 400,
       error: "invalid surface configuration",
-      message: "Surface title and provenance label are required.",
+      message: "Surface type, grammar, theme, title, and provenance label are required.",
     };
   }
 
@@ -908,6 +923,9 @@ function applyConfigureSurfaceSubmission(
     ok: true,
     state: {
       ...state,
+      surfacePreset,
+      grammarPreset,
+      themePreset,
       surfaceTitle,
       provenanceLabel,
       surfaceConfigured: true,

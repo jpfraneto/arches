@@ -12,6 +12,9 @@ export type SetupStepId =
 export type SetupFieldType = "text" | "radio" | "dropdown" | "qr" | "status" | "copy";
 export type ChannelRole = "lead" | "moderator";
 export type HostingMode = "tunnel-local" | "local" | "vps";
+export type SurfacePreset = "village" | "bulletin" | "library";
+export type GrammarPreset = "open-casts" | "curated-updates" | "knowledge-base";
+export type ThemePreset = "daylight" | "high-contrast" | "night";
 export type StepStatus = "pending" | "active" | "completed" | "blocked";
 
 export type SetupChoice = {
@@ -58,6 +61,9 @@ export type SetupState = {
   reservedSlug?: string;
   domain?: string;
   hostingMode?: HostingMode;
+  surfacePreset?: SurfacePreset;
+  grammarPreset?: GrammarPreset;
+  themePreset?: ThemePreset;
   surfaceTitle?: string;
   provenanceLabel?: string;
   surfaceConfigured?: boolean;
@@ -104,6 +110,64 @@ const HOSTING_CHOICES: SetupChoice[] = [
     id: "vps",
     label: "VPS",
     description: "For an always-on server with direct domain routing.",
+  },
+];
+
+export const DEFAULT_SURFACE_PRESET: SurfacePreset = "village";
+export const DEFAULT_GRAMMAR_PRESET: GrammarPreset = "open-casts";
+export const DEFAULT_THEME_PRESET: ThemePreset = "daylight";
+
+const SURFACE_PRESET_CHOICES: SetupChoice[] = [
+  {
+    id: "village",
+    label: "Village",
+    description: "A general community home with feed, context, and local provenance.",
+  },
+  {
+    id: "bulletin",
+    label: "Bulletin",
+    description: "A quieter surface for announcements, updates, and signal-heavy posting.",
+  },
+  {
+    id: "library",
+    label: "Library",
+    description: "A durable knowledge surface for reference-heavy communities.",
+  },
+];
+
+const GRAMMAR_PRESET_CHOICES: SetupChoice[] = [
+  {
+    id: "open-casts",
+    label: "Open Casts",
+    description: "Default Farcaster posting with Arch provenance.",
+  },
+  {
+    id: "curated-updates",
+    label: "Curated Updates",
+    description: "A posting grammar biased toward announcements and host-led updates.",
+  },
+  {
+    id: "knowledge-base",
+    label: "Knowledge Base",
+    description: "A posting grammar for reference notes and durable community memory.",
+  },
+];
+
+const THEME_PRESET_CHOICES: SetupChoice[] = [
+  {
+    id: "daylight",
+    label: "Daylight",
+    description: "Clear, bright, and readable.",
+  },
+  {
+    id: "high-contrast",
+    label: "High Contrast",
+    description: "Sharper separation for dense reading and accessibility.",
+  },
+  {
+    id: "night",
+    label: "Night",
+    description: "A darker interface for late reading and high-focus spaces.",
   },
 ];
 
@@ -333,6 +397,30 @@ function configureSurfaceStep(state: SetupState): SetupStep {
     description: "Set the first visible community defaults.",
     status: statusAfter(Boolean(state.hostingMode), Boolean(state.surfaceConfigured)),
     fields: [
+      {
+        id: "surfacePreset",
+        type: "radio",
+        label: "Surface type",
+        required: true,
+        value: state.surfacePreset ?? DEFAULT_SURFACE_PRESET,
+        choices: SURFACE_PRESET_CHOICES,
+      },
+      {
+        id: "grammarPreset",
+        type: "dropdown",
+        label: "Posting grammar",
+        required: true,
+        value: state.grammarPreset ?? DEFAULT_GRAMMAR_PRESET,
+        choices: GRAMMAR_PRESET_CHOICES,
+      },
+      {
+        id: "themePreset",
+        type: "dropdown",
+        label: "Theme",
+        required: true,
+        value: state.themePreset ?? DEFAULT_THEME_PRESET,
+        choices: THEME_PRESET_CHOICES,
+      },
       {
         id: "title",
         type: "text",

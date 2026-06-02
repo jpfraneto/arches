@@ -83,6 +83,37 @@ describe("buildSetupSession", () => {
     expect(session.completed).toBe(false);
   });
 
+  test("renders configurable surface presets before launch", () => {
+    const session = buildSetupSession({
+      sessionId: "setup_surface",
+      hostFid: 18350,
+      signerApproved: true,
+      eligibleChannels: [{ slug: "anky", role: "lead" }],
+      selectedChannelSlug: "anky",
+      reservedSlug: "anky",
+      domain: "anky.arches.lat",
+      hostingMode: "tunnel-local",
+    });
+    const step = findStep(session, "configure-surface");
+
+    expect(session.currentStepId).toBe("configure-surface");
+    expect(step?.fields.map((field) => field.id)).toEqual([
+      "surfacePreset",
+      "grammarPreset",
+      "themePreset",
+      "title",
+      "provenance",
+    ]);
+    expect(step?.fields[0].value).toBe("village");
+    expect(step?.fields[0].choices?.map((choice) => choice.id)).toEqual([
+      "village",
+      "bulletin",
+      "library",
+    ]);
+    expect(step?.fields[1].value).toBe("open-casts");
+    expect(step?.fields[2].value).toBe("daylight");
+  });
+
   test("completes only after publishing is verified and composer is unlocked", () => {
     const session = buildSetupSession({
       sessionId: "setup_4",
@@ -126,6 +157,31 @@ describe("validateStepSubmission", () => {
     expect(validateStepSubmission(step!, { channel: "not-anky" })).toEqual([
       { fieldId: "channel", message: "invalid choice" },
     ]);
+  });
+
+  test("rejects invalid surface preset choices", () => {
+    const session = buildSetupSession({
+      sessionId: "setup_surface_validation",
+      hostFid: 18350,
+      signerApproved: true,
+      eligibleChannels: [{ slug: "anky", role: "lead" }],
+      selectedChannelSlug: "anky",
+      reservedSlug: "anky",
+      domain: "anky.arches.lat",
+      hostingMode: "tunnel-local",
+    });
+    const step = findStep(session, "configure-surface");
+
+    expect(step).toBeDefined();
+    expect(
+      validateStepSubmission(step!, {
+        surfacePreset: "not-a-preset",
+        grammarPreset: "open-casts",
+        themePreset: "daylight",
+        title: "/anky",
+        provenance: "posted via anky",
+      }),
+    ).toEqual([{ fieldId: "surfacePreset", message: "invalid choice" }]);
   });
 });
 

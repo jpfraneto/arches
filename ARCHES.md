@@ -284,6 +284,7 @@ Implemented scaffolding in this repo:
 - Cloudflare Tunnel provider boundary and setup-session provisioning endpoint
 - in-memory setup audit events for broker actions
 - non-secret Arch config snapshot export from setup state
+- server-defined surface, grammar, and theme presets for Arch setup
 - unclaimed hostname setup invitation scaffold
 - optional Neynar channel eligibility adapter
 - in-memory eligible-channel slug reservation scaffold

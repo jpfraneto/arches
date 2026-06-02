@@ -209,6 +209,14 @@ The snapshot includes structured config and `.env` values derived from the setup
 session. It is the setup-broker counterpart to Discourse writing wizard values
 into site settings.
 
+The config includes the first community-surface presets:
+
+```env
+ARCH_SURFACE_PRESET=village
+ARCH_GRAMMAR_PRESET=open-casts
+ARCH_THEME_PRESET=daylight
+```
+
 For `tunnel-local`, this export requires the Cloudflare Tunnel route to be
 provisioned. It does not include tunnel tokens, signer material, mnemonic
 material, or API tokens.

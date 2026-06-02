@@ -21,6 +21,9 @@ const archId = Bun.env.ARCH_SLUG ?? "local";
 const archDomain = Bun.env.ARCH_DOMAIN ?? "localhost";
 const adminFid = Bun.env.ARCH_ADMIN_FID ?? "";
 const supportEmail = Bun.env.ARCH_SUPPORT_EMAIL ?? "";
+const surfacePreset = Bun.env.ARCH_SURFACE_PRESET ?? "village";
+const grammarPreset = Bun.env.ARCH_GRAMMAR_PRESET ?? "open-casts";
+const themePreset = Bun.env.ARCH_THEME_PRESET ?? "daylight";
 const surfaceTitle = Bun.env.ARCH_SURFACE_TITLE ?? `/${archId}`;
 const provenanceLabel = Bun.env.ARCH_PROVENANCE_LABEL ?? `posted via ${archId}`;
 const port = Number(Bun.env.PORT ?? 3000);
@@ -58,6 +61,11 @@ app.get("/api/arch", (c) => {
     slug: archId,
     domain: archDomain,
     title: surfaceTitle,
+    surface: {
+      preset: surfacePreset,
+      grammar: grammarPreset,
+      theme: themePreset,
+    },
     adminFid: adminFid ? Number(adminFid) : null,
     supportEmail,
     provenanceLabel,

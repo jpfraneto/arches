@@ -143,8 +143,14 @@ curl -fsSL -X POST http://localhost:3020/api/setup/sessions/SESSION_ID/arch/conf
 
 This is the Arches equivalent of Discourse applying wizard fields into site
 settings. It returns structured config plus non-secret `.env` values such as
-`ARCH_SLUG`, `ARCH_DOMAIN`, `ARCH_SURFACE_TITLE`, and
-`ARCH_PROVENANCE_LABEL`. It does not include tunnel tokens or signer material.
+`ARCH_SLUG`, `ARCH_DOMAIN`, `ARCH_SURFACE_PRESET`, `ARCH_GRAMMAR_PRESET`,
+`ARCH_THEME_PRESET`, `ARCH_SURFACE_TITLE`, and `ARCH_PROVENANCE_LABEL`. It does
+not include tunnel tokens or signer material.
+
+The setup schema now includes Discourse-style community-surface choices:
+surface type (`village`, `bulletin`, `library`), posting grammar
+(`open-casts`, `curated-updates`, `knowledge-base`), and theme (`daylight`,
+`high-contrast`, `night`).
 
 Arches is the seed, not the host identity. Each Arch is held up by the person or
 community running that appliance. Any app/factory Farcaster credential used by
