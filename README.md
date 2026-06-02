@@ -161,6 +161,10 @@ settings. It returns structured config plus non-secret `.env` values such as
 optional non-secret `ARCH_SIGNER_PUBLIC_KEY`. It does not include tunnel tokens
 or private signer material.
 
+The browser launch step exposes the same export as a setup action. After export,
+the non-secret env block is rendered back into the launch step for review and
+copying; changing earlier setup choices clears it so stale config is not reused.
+
 The setup schema now includes Discourse-style community-surface choices:
 surface type (`village`, `bulletin`, `library`), posting grammar
 (`open-casts`, `curated-updates`, `knowledge-base`), and theme (`daylight`,

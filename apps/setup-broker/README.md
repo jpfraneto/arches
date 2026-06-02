@@ -184,6 +184,12 @@ not include the Cloudflare Tunnel token, private signer material, mnemonic
 material, or private API tokens. The installer command remains the delivery path
 for the tunnel token until a safer installer handoff is implemented.
 
+The browser launch step now exposes the same export as a wizard action. When the
+host clicks `Export Arch config`, the broker logs `arch_config_exported`, stores
+the non-secret env block on the setup session, and re-renders it as a copy field
+inside the launch step. If earlier setup choices change, that exported env block
+is cleared and must be regenerated.
+
 The configure step follows the Discourse category-setup idea of choosing the
 kind of space first. Arches currently exposes server-defined choices for surface
 type, posting grammar, and theme; those choices are exported as appliance env.

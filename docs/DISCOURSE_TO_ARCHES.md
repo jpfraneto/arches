@@ -330,6 +330,10 @@ session state becomes appliance config fields such as `ARCH_SLUG`,
 `ARCH_PROVENANCE_LABEL`. When available, it may also include non-secret
 `ARCH_SIGNER_PUBLIC_KEY`. The snapshot is intentionally non-secret and does not
 carry tunnel tokens or private signer material.
+The browser launch step can now apply that same export from inside the wizard:
+it logs `arch_config_exported`, stores the non-secret env block on the session,
+and renders it as a copy field for review. Upstream setup changes clear the
+exported env block so stale settings are not reused.
 
 The first configure-surface choices now mirror the useful Discourse category
 setup pattern: pick the kind of space before detailed configuration. Arches
@@ -366,7 +370,8 @@ config as the underlying infra.
    session endpoint started in `apps/setup-broker`).
 8. Add setup audit/provenance events (started as in-memory events in
    `apps/setup-broker`).
-9. Add Arch config export from setup state (started in `apps/setup-broker`).
+9. Add Arch config export from setup state and browser launch-step review
+   (started in `apps/setup-broker`).
 10. Add community surface/grammar/theme presets (started in
    `packages/setup-schema` and exported by `apps/setup-broker`).
 11. Add Discourse-like wizard step metadata and browser rendering for step

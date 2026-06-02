@@ -312,13 +312,26 @@ Current step: Choose Community
       hostingMode: "tunnel-local",
       surfaceConfigured: true,
       installCommand: "curl -fsSL https://install.arches.lat | bash",
+      archConfigExported: true,
+      archConfigEnv: "ARCH_SLUG=anky\nARCH_DOMAIN=anky.arches.lat",
     });
     const step = findStep(session, "launch-appliance");
 
     expect(step).toBeDefined();
+    expect(step?.fields.map((field) => field.id)).toEqual([
+      "tunnel",
+      "installCommand",
+      "archConfig",
+    ]);
     expect(renderTerminalStep(step!)).toContain(`Install command: curl -fsSL https://install.arches.lat | bash
   The explicit fallback command is available if automatic setup cannot continue.
   Copy:
   curl -fsSL https://install.arches.lat | bash`);
+    expect(renderTerminalStep(step!)).toContain(`Arch config env: ARCH_SLUG=anky
+ARCH_DOMAIN=anky.arches.lat
+  Non-secret setup settings exported from the verified wizard state.
+  Copy:
+  ARCH_SLUG=anky
+  ARCH_DOMAIN=anky.arches.lat`);
   });
 });

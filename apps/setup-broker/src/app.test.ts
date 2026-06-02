@@ -310,7 +310,7 @@ describe("setup broker", () => {
     );
     expect(body.events.at(-1).type).toBe("signer_request_created");
     expect(JSON.stringify(body)).not.toContain("privateKey");
-    expect(JSON.stringify(body)).not.toContain("secret");
+    expect(JSON.stringify(body)).not.toContain("signerPrivateKey");
     expect(JSON.stringify(body)).not.toContain("mnemonic");
   });
 
@@ -1153,8 +1153,49 @@ describe("setup broker", () => {
     expect(body.env).toContain("ARCH_THEME_PRESET=daylight");
     expect(body.env).toContain("CLOUDFLARE_TUNNEL_ID=tunnel_123");
     expect(body.events.at(-1).type).toBe("arch_config_exported");
+    expect(body.session.steps[6].fields[2].value).toContain("ARCH_SLUG=anky");
+    expect(body.session.steps[6].fields[2].value).toContain("CLOUDFLARE_TUNNEL_ID=tunnel_123");
     expect(JSON.stringify(body)).not.toContain("tunnel-token");
     expect(JSON.stringify(body)).not.toContain("mnemonic");
+  });
+
+  test("exports Arch config from the browser launch step", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({
+        ...readyTunnelProvisioningState(),
+        tunnelId: "tunnel_123",
+        tunnelProvisioned: true,
+        installCommand: "curl -fsSL https://install.arches.lat | bash",
+      }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const pageResponse = await app.request(`/setup/${created.session.sessionId}`);
+    const pageHtml = await pageResponse.text();
+    const exportResponse = await app.request(`/setup/${created.session.sessionId}/arch/config`, {
+      method: "POST",
+      redirect: "manual",
+    });
+    const sessionResponse = await app.request(`/api/setup/sessions/${created.session.sessionId}`);
+    const body = await sessionResponse.json();
+    const updatedPageResponse = await app.request(`/setup/${created.session.sessionId}`);
+    const updatedPageHtml = await updatedPageResponse.text();
+
+    expect(pageResponse.status).toBe(200);
+    expect(pageHtml).toContain("Export Arch config");
+    expect(exportResponse.status).toBe(303);
+    expect(exportResponse.headers.get("location")).toBe(`/setup/${created.session.sessionId}`);
+    expect(body.session.currentStepId).toBe("launch-appliance");
+    expect(body.session.steps[6].fields[2].value).toContain("ARCH_DOMAIN=anky.arches.lat");
+    expect(body.events.at(-1).type).toBe("arch_config_exported");
+    expect(updatedPageHtml).toContain("Arch config env");
+    expect(updatedPageHtml).toContain("ARCH_DOMAIN=anky.arches.lat");
+    expect(updatedPageHtml).not.toContain("tunnel-token");
+    expect(updatedPageHtml).not.toContain("mnemonic");
   });
 
   test("keeps dev state mutation disabled by default", async () => {

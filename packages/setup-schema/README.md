@@ -28,7 +28,8 @@ The schema enforces the Arches setup order:
 5. Choose hosting.
 6. Configure the surface type, posting grammar, theme, title, and provenance.
 7. Launch the appliance, including tunnel route status and the explicit install
-   command when the broker has provisioned one.
+   command when the broker has provisioned one. The launch step can also render
+   the exported non-secret Arch config env block for review and copying.
 8. Verify publishing.
 9. Unlock the Arch.
 

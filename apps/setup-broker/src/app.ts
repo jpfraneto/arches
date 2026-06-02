@@ -1,7 +1,11 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import * as QRCode from "qrcode";
-import { buildArchConfigSnapshot, renderEnvSnapshot } from "./arch-config";
+import {
+  buildArchConfigSnapshot,
+  renderEnvSnapshot,
+  type ArchConfigSnapshot,
+} from "./arch-config";
 import {
   createChannelEligibilityProvider,
   type ChannelEligibilityProvider,
@@ -532,6 +536,8 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
         tunnelId: result.tunnelId,
         tunnelProvisioned: true,
         installCommand: result.installCommand,
+        archConfigExported: undefined,
+        archConfigEnv: undefined,
         applianceLaunched: undefined,
         publishingVerified: undefined,
         composerUnlocked: undefined,
@@ -595,34 +601,32 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     const record = sessions.get(sessionId);
     if (!record) return c.json({ error: "setup session not found" }, 404);
 
-    const result = buildArchConfigSnapshot(record.state);
+    const result = exportArchConfig(record);
     if (!result.ok) {
       return c.json({ error: result.error, message: result.message }, result.status);
     }
 
-    const updatedRecord = withSetupEvent(
-      {
-        ...record,
-        updatedAt: new Date().toISOString(),
-      },
-      "arch_config_exported",
-      {
-        actorFid: record.state.hostFid,
-        data: {
-          slug: result.config.arch.slug,
-          domain: result.config.arch.domain,
-          mode: result.config.hosting.mode,
-        },
-      },
-    );
-
-    sessions.set(sessionId, updatedRecord);
+    sessions.set(sessionId, result.record);
 
     return c.json({
       config: result.config,
-      env: renderEnvSnapshot(result.config.env),
-      events: updatedRecord.events,
+      env: result.env,
+      events: result.record.events,
+      session: buildSetupSession(result.record.state),
     });
+  });
+
+  app.post("/setup/:sessionId/arch/config", (c) => {
+    const sessionId = c.req.param("sessionId");
+    const record = sessions.get(sessionId);
+    if (!record) return c.html(renderMissingSessionHtml(), 404);
+
+    const result = exportArchConfig(record);
+    if (!result.ok) return c.html(renderStepErrorHtml(result.message), result.status);
+
+    sessions.set(sessionId, result.record);
+
+    return c.redirect(`/setup/${sessionId}`, 303);
   });
 
   app.post("/setup/:sessionId/steps/:stepId", async (c) => {
@@ -954,6 +958,8 @@ function applySignerStatus(record: SessionRecord, status: SignerStatus): Session
       tunnelProvisioned: undefined,
       applianceLaunched: undefined,
       installCommand: undefined,
+      archConfigExported: undefined,
+      archConfigEnv: undefined,
       publishingVerified: undefined,
       composerUnlocked: undefined,
     },
@@ -1105,6 +1111,8 @@ function applyFarcasterVerification(
       tunnelProvisioned: undefined,
       applianceLaunched: undefined,
       installCommand: undefined,
+      archConfigExported: undefined,
+      archConfigEnv: undefined,
       publishingVerified: undefined,
       composerUnlocked: undefined,
     },
@@ -1214,6 +1222,56 @@ type StepSubmissionResult =
       message: string;
       validationErrors?: Array<{ fieldId: string; message: string }>;
     };
+
+type ArchConfigExportResult =
+  | {
+      ok: true;
+      record: SessionRecord;
+      config: ArchConfigSnapshot;
+      env: string;
+    }
+  | {
+      ok: false;
+      status: 409;
+      error: string;
+      message: string;
+    };
+
+function exportArchConfig(record: SessionRecord): ArchConfigExportResult {
+  const result = buildArchConfigSnapshot(record.state);
+  if (!result.ok) return result;
+
+  const env = renderEnvSnapshot(result.config.env);
+  const updatedState = {
+    ...record.state,
+    archConfigExported: true,
+    archConfigEnv: env,
+  };
+
+  const updatedRecord = withSetupEvent(
+    {
+      ...record,
+      state: updatedState,
+      updatedAt: new Date().toISOString(),
+    },
+    "arch_config_exported",
+    {
+      actorFid: updatedState.hostFid,
+      data: {
+        slug: result.config.arch.slug,
+        domain: result.config.arch.domain,
+        mode: result.config.hosting.mode,
+      },
+    },
+  );
+
+  return {
+    ok: true,
+    record: updatedRecord,
+    config: result.config,
+    env,
+  };
+}
 
 function applySetupStepSubmission(
   state: SetupState,
@@ -1341,6 +1399,8 @@ function applyChooseCommunitySubmission(
       tunnelProvisioned: undefined,
       applianceLaunched: undefined,
       installCommand: undefined,
+      archConfigExported: undefined,
+      archConfigEnv: undefined,
       publishingVerified: undefined,
       composerUnlocked: undefined,
     },
@@ -1403,6 +1463,8 @@ function applyNameSurfaceSubmission(state: SetupState, values: FieldValues): Ste
       tunnelProvisioned: undefined,
       applianceLaunched: undefined,
       installCommand: undefined,
+      archConfigExported: undefined,
+      archConfigEnv: undefined,
       publishingVerified: undefined,
       composerUnlocked: undefined,
     },
@@ -1435,6 +1497,8 @@ function applyChooseHostingSubmission(state: SetupState, values: FieldValues): S
       tunnelProvisioned: undefined,
       applianceLaunched: undefined,
       installCommand: undefined,
+      archConfigExported: undefined,
+      archConfigEnv: undefined,
       publishingVerified: undefined,
       composerUnlocked: undefined,
     },
@@ -1474,6 +1538,8 @@ function applyConfigureSurfaceSubmission(
       tunnelProvisioned: undefined,
       applianceLaunched: undefined,
       installCommand: undefined,
+      archConfigExported: undefined,
+      archConfigEnv: undefined,
       publishingVerified: undefined,
       composerUnlocked: undefined,
     },
@@ -2131,23 +2197,37 @@ async function renderCurrentStep(
 ): Promise<string> {
   const canSubmit = isSubmittableStep(step);
   const fields = await Promise.all(step.fields.map((field) => renderField(field, canSubmit)));
+  const fieldMarkup = `<div class="fields">
+        ${fields.join("")}
+      </div>`;
 
   return `<div class="surface step-surface-${escapeHtml(step.id)}">
     <div class="surface-kicker">Step ${escapeHtml(String(step.displayIndex))} of ${escapeHtml(String(totalSteps))}</div>
     <h2>${escapeHtml(step.title)}</h2>
     <p class="description">${escapeHtml(step.description)}</p>
-    <form method="post" action="/setup/${escapeHtml(sessionId)}/steps/${escapeHtml(step.id)}">
-      <div class="fields">
-        ${fields.join("")}
-      </div>
-      ${canSubmit ? `<div class="actions"><button type="submit">Continue</button></div>` : ""}
-    </form>
+    ${
+      canSubmit
+        ? `<form method="post" action="/setup/${escapeHtml(sessionId)}/steps/${escapeHtml(step.id)}">
+      ${fieldMarkup}
+      <div class="actions"><button type="submit">Continue</button></div>
+    </form>`
+        : fieldMarkup
+    }
+    ${renderStepAction(sessionId, step)}
     ${
       shouldPollFarcaster
         ? `<p class="poll-status" data-farcaster-autopoll-status>Waiting for Farcaster signature...</p>`
         : ""
     }
   </div>`;
+}
+
+function renderStepAction(sessionId: string, step: SetupStep): string {
+  if (step.id !== "launch-appliance" || step.status !== "active") return "";
+
+  return `<form class="actions" method="post" action="/setup/${escapeHtml(sessionId)}/arch/config">
+      <button type="submit">Export Arch config</button>
+    </form>`;
 }
 
 async function renderField(field: SetupField, editable = false): Promise<string> {

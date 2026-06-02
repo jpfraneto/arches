@@ -85,6 +85,8 @@ export type SetupState = {
   tunnelProvisioned?: boolean;
   applianceLaunched?: boolean;
   installCommand?: string;
+  archConfigExported?: boolean;
+  archConfigEnv?: string;
   publishingVerified?: boolean;
   composerUnlocked?: boolean;
 };
@@ -544,6 +546,16 @@ function launchApplianceStep(state: SetupState): SetupStepDraft {
         label: "Install command",
         value: state.installCommand,
         description: "The explicit fallback command is available if automatic setup cannot continue.",
+      },
+      {
+        id: "archConfig",
+        type: "copy",
+        label: "Arch config env",
+        value: state.archConfigEnv,
+        description:
+          state.archConfigExported && state.archConfigEnv
+            ? "Non-secret setup settings exported from the verified wizard state."
+            : "Export the non-secret Arch config before the installer writes appliance settings.",
       },
     ],
   };
