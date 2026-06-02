@@ -107,6 +107,10 @@ bun run src/index.ts
 The adapter only loads channels after a setup session has a host FID. The real
 host FID still needs to come from Farcaster verification.
 
+The setup broker also has an in-memory `*.arches.lat` reservation primitive. It
+only reserves the selected eligible Farcaster channel slug; arbitrary custom
+slugs are intentionally not accepted yet.
+
 Arches is the seed, not the host identity. Each Arch is held up by the person or
 community running that appliance. Any app/factory Farcaster credential used by
 Arches may only request signer approval during setup; it must not become the FID

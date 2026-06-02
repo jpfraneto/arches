@@ -36,6 +36,7 @@ type SessionResponse = {
 };
 
 const sessions = new Map<string, SessionRecord>();
+const slugReservations = new Map<string, string>();
 const RESERVED_ARCHES_SUBDOMAINS = new Set(["install", "setup", "www"]);
 
 export function createSetupBrokerApp(options: BrokerOptions = {}) {
@@ -156,6 +157,32 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     return c.json(sessionResponse(updatedState, publicOrigin));
   });
 
+  app.post("/api/setup/sessions/:sessionId/slug/reserve", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const record = sessions.get(sessionId);
+    if (!record) return c.json({ error: "setup session not found" }, 404);
+
+    const body = await c.req.json().catch(() => ({}));
+    if (!isObject(body)) return c.json({ error: "reservation body must be an object" }, 400);
+
+    const result = reserveArchSlug(record.state, normalizeSlug(body.slug));
+    if (!result.ok) return c.json({ error: result.error, message: result.message }, result.status);
+
+    const updatedState = {
+      ...record.state,
+      reservedSlug: result.slug,
+      domain: `${result.slug}.arches.lat`,
+    };
+
+    sessions.set(sessionId, {
+      ...record,
+      state: updatedState,
+      updatedAt: new Date().toISOString(),
+    });
+
+    return c.json(sessionResponse(updatedState, publicOrigin));
+  });
+
   app.put("/api/setup/sessions/:sessionId/dev-state", async (c) => {
     if (!allowDevStateUpdates) {
       return c.json({ error: "dev state updates are disabled" }, 404);
@@ -188,6 +215,7 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
 
 export function resetSetupBrokerSessionsForTests() {
   sessions.clear();
+  slugReservations.clear();
 }
 
 function createSetupSession(publicOrigin: string, requestedSlug?: string): SetupState {
@@ -229,6 +257,97 @@ function createSessionId(): string {
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+type ReservationResult =
+  | {
+      ok: true;
+      slug: string;
+    }
+  | {
+      ok: false;
+      status: 400 | 409;
+      error: string;
+      message: string;
+    };
+
+function reserveArchSlug(state: SetupState, requestedSlug?: string): ReservationResult {
+  if (!state.hostFid) {
+    return {
+      ok: false,
+      status: 409,
+      error: "farcaster verification required",
+      message:
+        "Slug reservation can only happen after the setup broker derives a host FID from Farcaster verification.",
+    };
+  }
+
+  if (!state.selectedChannelSlug) {
+    return {
+      ok: false,
+      status: 409,
+      error: "channel selection required",
+      message: "Choose an eligible Farcaster channel before reserving an Arch hostname.",
+    };
+  }
+
+  const selectedChannel = state.eligibleChannels?.find(
+    (channel) => channel.slug === state.selectedChannelSlug,
+  );
+  if (!selectedChannel) {
+    return {
+      ok: false,
+      status: 409,
+      error: "selected channel is not eligible",
+      message: "The selected channel must come from verified Farcaster channel eligibility.",
+    };
+  }
+
+  const slug = requestedSlug ?? state.requestedSlug ?? state.selectedChannelSlug;
+  if (!slug) {
+    return {
+      ok: false,
+      status: 400,
+      error: "invalid slug",
+      message: "Arch slug must be lowercase URL-safe text.",
+    };
+  }
+
+  if (RESERVED_ARCHES_SUBDOMAINS.has(slug)) {
+    return {
+      ok: false,
+      status: 409,
+      error: "reserved slug",
+      message: `${slug}.arches.lat is reserved for Arches infrastructure.`,
+    };
+  }
+
+  if (slug !== state.selectedChannelSlug) {
+    return {
+      ok: false,
+      status: 409,
+      error: "custom slugs are not implemented",
+      message:
+        "This scaffold only reserves the selected eligible channel slug. Custom slugs can be added after verified ownership rules exist.",
+    };
+  }
+
+  const existingSessionId = slugReservations.get(slug);
+  if (existingSessionId && existingSessionId !== state.sessionId) {
+    return {
+      ok: false,
+      status: 409,
+      error: "slug already reserved",
+      message: `${slug}.arches.lat is already reserved by another setup session.`,
+    };
+  }
+
+  slugReservations.set(slug, state.sessionId);
+
+  return {
+    ok: true,
+    slug,
+  };
 }
 
 function renderSetupHtml(session: SetupSession): string {

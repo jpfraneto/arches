@@ -70,6 +70,24 @@ The adapter reads Neynar's current channel list endpoint,
 `GET https://api.neynar.com/v2/farcaster/channel/list/`, and maps channels where
 the host FID is `lead.fid` or appears in `moderator_fids`.
 
+## Slug Reservation
+
+The broker has an in-memory reservation primitive for `*.arches.lat` hostnames:
+
+```bash
+curl -fsSL -X POST http://localhost:3020/api/setup/sessions/SESSION_ID/slug/reserve
+```
+
+Reservation is gated on:
+
+- a host FID already existing on the session
+- an eligible Farcaster channel being selected
+- the selected channel appearing in the session's eligible channel list
+
+This scaffold only reserves the selected eligible channel slug. It does not
+support arbitrary custom slugs yet, because custom names need their own verified
+ownership rules.
+
 For local tests only, `createSetupBrokerApp({ allowDevStateUpdates: true })`
 enables a dev-only state mutation endpoint. The runtime server only enables that
 endpoint when `ARCHES_SETUP_BROKER_DEV=1`.

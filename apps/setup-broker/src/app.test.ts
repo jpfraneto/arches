@@ -105,6 +105,123 @@ describe("setup broker", () => {
     ]);
   });
 
+  test("requires host FID before reserving slug", async () => {
+    const app = createSetupBrokerApp();
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/slug/reserve`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.message).toContain("derives a host FID from Farcaster verification");
+  });
+
+  test("requires selected eligible channel before reserving slug", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({ hostFid: 18350, signerApproved: true }),
+      headers: { "content-type": "application/json" },
+    });
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/slug/reserve`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.message).toContain("Choose an eligible Farcaster channel");
+  });
+
+  test("rejects custom slug reservation before ownership rules exist", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({
+        hostFid: 18350,
+        signerApproved: true,
+        eligibleChannels: [{ slug: "anky", role: "lead" }],
+        selectedChannelSlug: "anky",
+      }),
+      headers: { "content-type": "application/json" },
+    });
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/slug/reserve`,
+      {
+        method: "POST",
+        body: JSON.stringify({ slug: "custom" }),
+        headers: { "content-type": "application/json" },
+      },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.message).toContain("only reserves the selected eligible channel slug");
+  });
+
+  test("reserves selected eligible channel slug and advances to hosting", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({
+        hostFid: 18350,
+        signerApproved: true,
+        eligibleChannels: [{ slug: "anky", role: "lead" }],
+        selectedChannelSlug: "anky",
+      }),
+      headers: { "content-type": "application/json" },
+    });
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/slug/reserve`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.session.currentStepId).toBe("choose-hosting");
+    expect(body.session.steps[3].fields[0].value).toBe("anky");
+    expect(body.session.steps[3].fields[1].value).toBe("anky.arches.lat");
+  });
+
+  test("prevents a second session from reserving the same slug", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const reserve = async () => {
+      const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+      const created = await createResponse.json();
+      await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+        method: "PUT",
+        body: JSON.stringify({
+          hostFid: 18350,
+          signerApproved: true,
+          eligibleChannels: [{ slug: "anky", role: "lead" }],
+          selectedChannelSlug: "anky",
+        }),
+        headers: { "content-type": "application/json" },
+      });
+
+      return app.request(`/api/setup/sessions/${created.session.sessionId}/slug/reserve`, {
+        method: "POST",
+      });
+    };
+
+    expect((await reserve()).status).toBe(200);
+
+    const conflict = await reserve();
+    const body = await conflict.json();
+
+    expect(conflict.status).toBe(409);
+    expect(body.message).toContain("already reserved by another setup session");
+  });
+
   test("redirects browser setup entry to a new session page", async () => {
     const app = createSetupBrokerApp();
     const response = await app.request("/setup", { redirect: "manual" });

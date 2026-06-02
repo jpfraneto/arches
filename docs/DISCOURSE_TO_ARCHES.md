@@ -302,7 +302,8 @@ remains blocked until Farcaster publishing has been verified.
 3. Add Farcaster QR verification and host FID derivation.
 4. Add Neynar channel lookup for eligible channels (adapter started in
    `apps/setup-broker`).
-5. Add slug reservation for `*.arches.lat`.
+5. Add slug reservation for `*.arches.lat` (started with in-memory reservation
+   in `apps/setup-broker`).
 6. Move Cloudflare Tunnel provisioning behind the broker.
 7. Teach `scripts/install.sh` to call the broker when no flags are passed
    (started with the terminal session handoff).
