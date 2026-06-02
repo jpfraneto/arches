@@ -55,6 +55,27 @@ accepted fields into durable site settings and logs the completed wizard step;
 admin user. Arches should preserve that control boundary while replacing
 Discourse's admin account with a verified Farcaster host FID.
 
+The upstream source confirms five mechanics worth copying into Arches:
+
+- Ordered linked steps: Discourse stores `previous`, `next`, and `index` on each
+  wizard step, which lets the UI render progress without owning setup order.
+- Generic field schema: text, radio, dropdown, and choice metadata are defined
+  server-side, serialized, and rendered by reusable client field components.
+- Current-step updater: form submissions are routed through a step updater that
+  is allowed to apply durable side effects only for the active wizard step.
+- Durable completion proof: completed wizard steps are logged through
+  `UserHistory` as `wizard_step` actions, so setup can resume from the first
+  incomplete field-bearing step.
+- Admin gate before product unlock: Discourse only exposes the wizard to staff
+  and uses wizard completion to decide whether the normal app can proceed.
+
+The Arches migration keeps those mechanics but changes the trust root. The gate
+is not a Discourse admin account; it is a Farcaster signature from the host FID.
+The durable side effects are not `SiteSetting` writes; they are Arch config,
+slug reservation, Cloudflare routing, appliance launch proof, and Farcaster
+publishing proof. The audit target is not a forum admin log; it is setup
+provenance for a community-owned Arch.
+
 ## What Worked
 
 Discourse's setup model works because the wizard is a product boundary, not a
