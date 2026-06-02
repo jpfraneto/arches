@@ -5,8 +5,21 @@ It creates setup sessions and returns the shared setup schema plus terminal
 rendering from `packages/setup-schema`.
 
 The broker has a Farcaster verification provider boundary. The default provider
-returns `501`, so production identity verification is not wired yet, but the
-public API already rejects manual `fid`, `hostFid`, and `adminFid` claims.
+returns `501`, but the public API already rejects manual `fid`, `hostFid`, and
+`adminFid` claims.
+
+Enable the official Farcaster auth-client verifier with:
+
+```bash
+ARCHES_FARCASTER_VERIFIER=auth-client \
+FARCASTER_ETH_RPC_URL=https://your-optimism-rpc.example \
+bun run src/index.ts
+```
+
+`FARCASTER_AUTH_RELAY_URL` can override the default Farcaster auth relay.
+`FARCASTER_ACCEPT_AUTH_ADDRESS=0` disables auth-address signatures and only
+accepts custody-address signatures. The broker still requires the posted SIWF
+nonce to match the setup session nonce before calling the verifier.
 
 Run locally:
 

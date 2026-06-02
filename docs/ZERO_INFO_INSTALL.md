@@ -168,8 +168,9 @@ The broker should not own the Arch identity. The appliance host owns the local
 process and the signer that publishes to Farcaster. The installer should
 eventually call this broker when it receives no arguments. The current setup
 broker has a Farcaster verification provider boundary with a per-session
-nonce/domain challenge, but its default verifier still fails closed with `501`
-until a production SIWF verifier is configured.
+nonce/domain challenge. It can verify SIWF messages through the official
+Farcaster auth client when `ARCHES_FARCASTER_VERIFIER=auth-client`; the default
+verifier still fails closed with `501`.
 
 ## Broker Provisioning Scaffold
 

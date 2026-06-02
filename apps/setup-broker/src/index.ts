@@ -1,5 +1,6 @@
 import { createSetupBrokerApp } from "./app";
 import { createChannelEligibilityProvider } from "./channel-eligibility";
+import { createFarcasterVerificationProvider } from "./farcaster-verification";
 import { createTunnelProvisioningProvider } from "./tunnel-provisioning";
 
 const port = Number(Bun.env.PORT ?? 3020);
@@ -15,6 +16,12 @@ const tunnelProvisioningProvider = createTunnelProvisioningProvider({
   CLOUDFLARE_ZONE_ID: Bun.env.CLOUDFLARE_ZONE_ID,
   CLOUDFLARE_API_TOKEN: Bun.env.CLOUDFLARE_API_TOKEN,
 });
+const farcasterVerificationProvider = createFarcasterVerificationProvider({
+  ARCHES_FARCASTER_VERIFIER: Bun.env.ARCHES_FARCASTER_VERIFIER,
+  FARCASTER_AUTH_RELAY_URL: Bun.env.FARCASTER_AUTH_RELAY_URL,
+  FARCASTER_ETH_RPC_URL: Bun.env.FARCASTER_ETH_RPC_URL,
+  FARCASTER_ACCEPT_AUTH_ADDRESS: Bun.env.FARCASTER_ACCEPT_AUTH_ADDRESS,
+});
 
 Bun.serve({
   port,
@@ -23,6 +30,7 @@ Bun.serve({
     allowDevStateUpdates,
     channelEligibilityProvider,
     tunnelProvisioningProvider,
+    farcasterVerificationProvider,
   }).fetch,
 });
 

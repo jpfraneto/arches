@@ -12,7 +12,7 @@ import {
 } from "./tunnel-provisioning";
 import {
   FarcasterVerificationError,
-  NoopFarcasterVerificationProvider,
+  createFarcasterVerificationProvider,
   type FarcasterVerificationProvider,
   type FarcasterVerificationResult,
 } from "./farcaster-verification";
@@ -95,7 +95,7 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
   const tunnelProvisioningProvider =
     options.tunnelProvisioningProvider ?? createTunnelProvisioningProvider({});
   const farcasterVerificationProvider =
-    options.farcasterVerificationProvider ?? new NoopFarcasterVerificationProvider();
+    options.farcasterVerificationProvider ?? createFarcasterVerificationProvider({});
 
   app.use(
     "*",
