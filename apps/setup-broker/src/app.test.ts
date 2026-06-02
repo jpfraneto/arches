@@ -838,6 +838,40 @@ describe("setup broker", () => {
     expect(body.session.currentStepId).toBe("name-surface");
   });
 
+  test("renders browser step validation errors inline", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({
+        hostFid: 18350,
+        signerApproved: true,
+        eligibleChannels: [{ slug: "anky", role: "lead" }],
+      }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await app.request(
+      `/setup/${created.session.sessionId}/steps/choose-community`,
+      {
+        method: "POST",
+        body: new URLSearchParams({}),
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+      },
+    );
+    const html = await response.text();
+    const sessionResponse = await app.request(`/api/setup/sessions/${created.session.sessionId}`);
+    const body = await sessionResponse.json();
+
+    expect(response.status).toBe(400);
+    expect(html).toContain("Choose Community");
+    expect(html).toContain('class="field choice-cards field-channel invalid"');
+    expect(html).toContain('<div class="field-error">This field is required.</div>');
+    expect(html).not.toContain("Setup step error");
+    expect(body.session.currentStepId).toBe("choose-community");
+  });
+
   test("renders configure-surface as type cards plus select fields", async () => {
     const app = createSetupBrokerApp({ allowDevStateUpdates: true });
     const createResponse = await app.request("/api/setup/sessions", { method: "POST" });

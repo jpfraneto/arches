@@ -311,6 +311,8 @@ The schema now carries Discourse-like step metadata as well: `index`,
 `displayIndex`, `previousStepId`, `nextStepId`, status, icon name, fields,
 choices, and choice extra labels. That mirrors the useful part of Discourse's
 wizard serializers while keeping Arches' Farcaster-first setup contract.
+It also supports field-level error descriptions so browser submissions can stay
+inside the wizard when validation fails.
 
 The broker audit trail is the first Arches equivalent of Discourse's wizard
 history logging. Discourse records completed wizard steps through user history
@@ -338,9 +340,11 @@ starts with surface presets (`village`, `bulletin`, `library`), grammar presets
 The browser setup renderer now preserves that UI model: the current step shows
 its server-owned step count, the sidebar shows indexed progress and step icons,
 channel choices can show role badges from the schema, and the surface preset is
-a card chooser while grammar and theme are select fields. This keeps the
-Discourse category-type-card idea while leaving Arches' setup schema, broker,
-Cloudflare routing, and appliance config as the underlying infra.
+a card chooser while grammar and theme are select fields. Validation failures
+re-render the same setup page with inline field errors instead of a generic
+error screen. This keeps the Discourse category-type-card and field-error ideas
+while leaving Arches' setup schema, broker, Cloudflare routing, and appliance
+config as the underlying infra.
 
 ## Implementation Phases
 
@@ -366,7 +370,8 @@ Cloudflare routing, and appliance config as the underlying infra.
 10. Add community surface/grammar/theme presets (started in
    `packages/setup-schema` and exported by `apps/setup-broker`).
 11. Add Discourse-like wizard step metadata and browser rendering for step
-   count, indexed progress, icons, and choice badges (started in
+   count, indexed progress, icons, choice badges, and inline field errors
+   (started in
    `packages/setup-schema` and `apps/setup-broker`).
 12. Teach `scripts/install.sh` to call the broker when no flags are passed
    (started with the terminal session handoff).

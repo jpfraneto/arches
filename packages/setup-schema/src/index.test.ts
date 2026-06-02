@@ -6,6 +6,7 @@ import {
   renderTerminalStep,
   serializeStepValues,
   validateStepSubmission,
+  withFieldErrors,
   type SetupState,
 } from "./index";
 
@@ -224,6 +225,26 @@ describe("validateStepSubmission", () => {
         provenance: "posted via anky",
       }),
     ).toEqual([{ fieldId: "surfacePreset", message: "invalid choice" }]);
+  });
+});
+
+describe("withFieldErrors", () => {
+  test("adds Discourse-style field error descriptions to a setup session", () => {
+    const session = buildSetupSession({
+      sessionId: "setup_field_errors",
+      hostFid: 18350,
+      signerApproved: true,
+      eligibleChannels: [{ slug: "anky", role: "lead" }],
+    });
+    const step = findStep(session, "choose-community");
+
+    expect(step).toBeDefined();
+
+    const invalidSession = withFieldErrors(session, validateStepSubmission(step!, {}));
+    const invalidStep = findStep(invalidSession, "choose-community");
+
+    expect(invalidStep?.fields[0].errorDescription).toBe("This field is required.");
+    expect(findStep(invalidSession, "verify-farcaster")?.fields[0].errorDescription).toBeUndefined();
   });
 });
 

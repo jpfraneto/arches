@@ -281,7 +281,7 @@ Implemented scaffolding in this repo:
 - setup broker scaffold in `apps/setup-broker`
 - terminal and browser setup rendering
 - generic current-step setup updater for schema-backed fields
-- Discourse-style setup step metadata and browser progress rendering
+- Discourse-style setup step metadata, browser progress, and field-error rendering
 - Farcaster verification provider boundary with per-session nonce/domain
   challenge
 - optional official Farcaster auth-client SIWF verifier

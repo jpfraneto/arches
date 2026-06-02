@@ -29,6 +29,7 @@ import {
   findStep,
   renderTerminalSession,
   validateStepSubmission,
+  withFieldErrors,
   type FieldValues,
   type GrammarPreset,
   type HostingMode,
@@ -635,7 +636,17 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
       c.req.param("stepId") as SetupStepId,
       values,
     );
-    if (!result.ok) return c.html(renderStepErrorHtml(result.message), result.status);
+    if (!result.ok) {
+      if (result.validationErrors?.length) {
+        const session = withFieldErrors(
+          buildSetupSession(record.state),
+          result.validationErrors,
+        );
+        return c.html(await renderSetupHtml(session, record.events), result.status);
+      }
+
+      return c.html(renderStepErrorHtml(result.message), result.status);
+    }
 
     let updatedRecord = withSetupEvent(
       {
@@ -1201,6 +1212,7 @@ type StepSubmissionResult =
       status: 400 | 409 | 501;
       error: string;
       message: string;
+      validationErrors?: Array<{ fieldId: string; message: string }>;
     };
 
 function applySetupStepSubmission(
@@ -1238,6 +1250,7 @@ function applySetupStepSubmission(
       message: validationErrors
         .map((validationError) => `${validationError.fieldId}: ${validationError.message}`)
         .join(", "),
+      validationErrors,
     };
   }
 
@@ -1758,6 +1771,18 @@ async function renderSetupHtml(
       gap: 6px;
     }
 
+    .field.invalid input,
+    .field.invalid select,
+    .field.invalid .choice {
+      border-color: var(--blocked);
+    }
+
+    .field-error {
+      color: var(--blocked);
+      font-size: 13px;
+      font-weight: 650;
+    }
+
     .choice {
       display: grid;
       grid-template-columns: 22px 1fr;
@@ -2145,7 +2170,7 @@ async function renderField(field: SetupField, editable = false): Promise<string>
 function renderChoiceField(field: SetupField, editable: boolean): string {
   const choices = field.choices ?? [];
 
-  return `<div class="field choice-cards field-${escapeHtml(field.id)}">
+  return `<div class="${renderFieldClass(field, "choice-cards")}">
     <label>${escapeHtml(requiredLabel(field))}</label>
     ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ""}
     ${
@@ -2169,6 +2194,7 @@ function renderChoiceField(field: SetupField, editable: boolean): string {
             .join("")
         : `<div class="field-desc">No choices available yet.</div>`
     }
+    ${renderFieldError(field)}
   </div>`;
 }
 
@@ -2176,7 +2202,7 @@ function renderSelectField(field: SetupField, editable: boolean): string {
   const choices = field.choices ?? [];
   const selectedValue = field.value ?? "";
 
-  return `<div class="field select-field field-${escapeHtml(field.id)}">
+  return `<div class="${renderFieldClass(field, "select-field")}">
     <label for="${escapeHtml(field.id)}">${escapeHtml(requiredLabel(field))}</label>
     ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ""}
     ${
@@ -2197,21 +2223,23 @@ function renderSelectField(field: SetupField, editable: boolean): string {
           </select>`
         : `<div class="field-desc">No choices available yet.</div>`
     }
+    ${renderFieldError(field)}
   </div>`;
 }
 
 function renderStatusField(field: SetupField): string {
-  return `<div class="field status-field field-${escapeHtml(field.id)}">
+  return `<div class="${renderFieldClass(field, "status-field")}">
     <label>${escapeHtml(requiredLabel(field))}</label>
     <span class="status">${escapeHtml(field.value ?? "waiting")}</span>
     ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ""}
+    ${renderFieldError(field)}
   </div>`;
 }
 
 async function renderQrField(field: SetupField): Promise<string> {
   const qrSvg = field.value ? await renderQrSvg(field.value) : "";
 
-  return `<div class="field qr-field field-${escapeHtml(field.id)}">
+  return `<div class="${renderFieldClass(field, "qr-field")}">
     <label>${escapeHtml(requiredLabel(field))}</label>
     ${
       field.value
@@ -2221,6 +2249,7 @@ async function renderQrField(field: SetupField): Promise<string> {
         : `<span class="status">waiting</span>`
     }
     ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ""}
+    ${renderFieldError(field)}
   </div>`;
 }
 
@@ -2271,15 +2300,16 @@ function renderFarcasterPollingScript(sessionId: string): string {
 }
 
 function renderCopyField(field: SetupField): string {
-  return `<div class="field copy-field field-${escapeHtml(field.id)}">
+  return `<div class="${renderFieldClass(field, "copy-field")}">
     <label>${escapeHtml(requiredLabel(field))}</label>
     ${field.value ? `<pre>${escapeHtml(field.value)}</pre>` : `<div class="field-desc">No command available yet.</div>`}
     ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ""}
+    ${renderFieldError(field)}
   </div>`;
 }
 
 function renderTextField(field: SetupField, editable: boolean): string {
-  return `<div class="field text-field field-${escapeHtml(field.id)}">
+  return `<div class="${renderFieldClass(field, "text-field")}">
     <label for="${escapeHtml(field.id)}">${escapeHtml(requiredLabel(field))}</label>
     <input id="${escapeHtml(field.id)}" name="${escapeHtml(field.id)}" type="text" value="${escapeHtml(
       field.value ?? "",
@@ -2287,7 +2317,18 @@ function renderTextField(field: SetupField, editable: boolean): string {
       editable ? "" : " readonly"
     }>
     ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ""}
+    ${renderFieldError(field)}
   </div>`;
+}
+
+function renderFieldClass(field: SetupField, variant: string): string {
+  return `field ${variant} field-${escapeHtml(field.id)}${field.errorDescription ? " invalid" : ""}`;
+}
+
+function renderFieldError(field: SetupField): string {
+  return field.errorDescription
+    ? `<div class="field-error">${escapeHtml(field.errorDescription)}</div>`
+    : "";
 }
 
 function isSubmittableStep(step: SetupStep): boolean {

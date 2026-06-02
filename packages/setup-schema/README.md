@@ -13,6 +13,11 @@ metadata: zero-based `index`, one-based `displayIndex`, previous/next step ids,
 status, icon name, fields, choices, and choice badges. Renderers should display
 that metadata rather than inventing their own setup order.
 
+The schema also supports field-level error descriptions. Browser renderers can
+re-render the same setup session with invalid fields marked, matching the useful
+Discourse pattern of keeping the operator inside the wizard after validation
+fails.
+
 The schema enforces the Arches setup order:
 
 1. Verify Farcaster.

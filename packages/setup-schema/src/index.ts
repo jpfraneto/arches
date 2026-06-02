@@ -34,6 +34,7 @@ export type SetupField = {
   value?: string;
   placeholder?: string;
   description?: string;
+  errorDescription?: string;
   choices?: SetupChoice[];
 };
 
@@ -226,6 +227,26 @@ export function findStep(session: SetupSession, stepId: SetupStepId): SetupStep 
   return session.steps.find((step) => step.id === stepId);
 }
 
+export function withFieldErrors(
+  session: SetupSession,
+  errors: ValidationError[],
+): SetupSession {
+  const errorByFieldId = new Map(
+    errors.map((error) => [error.fieldId, validationErrorDescription(error.message)]),
+  );
+
+  return {
+    ...session,
+    steps: session.steps.map((step) => ({
+      ...step,
+      fields: step.fields.map((field) => ({
+        ...field,
+        errorDescription: errorByFieldId.get(field.id),
+      })),
+    })),
+  };
+}
+
 export function validateStepSubmission(step: SetupStep, values: FieldValues): ValidationError[] {
   const errors: ValidationError[] = [];
 
@@ -250,6 +271,19 @@ export function validateStepSubmission(step: SetupStep, values: FieldValues): Va
   }
 
   return errors;
+}
+
+function validationErrorDescription(message: string): string {
+  switch (message) {
+    case "required":
+      return "This field is required.";
+    case "invalid choice":
+      return "Choose one of the available options.";
+    case "choice is disabled":
+      return "This option is not available.";
+    default:
+      return message;
+  }
 }
 
 export function serializeStepValues(step: SetupStep): FieldValues {

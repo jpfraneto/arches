@@ -124,6 +124,10 @@ metadata: step index, display index, previous/next ids, status, icon name, and
 choice extra labels. This keeps the visible setup order and channel role badges
 server-owned instead of hard-coded in the browser shell.
 
+When browser form validation fails, the broker re-renders the same setup session
+with field-level error descriptions instead of sending the host to a generic
+error page. JSON API callers still receive the normal structured error response.
+
 ## Setup Audit Events
 
 The broker records an in-memory audit trail for each setup session:

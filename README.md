@@ -169,7 +169,8 @@ surface type (`village`, `bulletin`, `library`), posting grammar
 The schema also carries Discourse-style wizard metadata: step index,
 one-based display index, previous/next step ids, status, icon name, and choice
 badges. The browser setup page renders that metadata directly for step count,
-indexed progress, channel role badges, and surface preset cards.
+indexed progress, channel role badges, surface preset cards, and inline field
+validation errors.
 
 Arches is the seed, not the host identity. Each Arch is held up by the person or
 community running that appliance. Any app/factory Farcaster credential used by
