@@ -283,6 +283,7 @@ Implemented scaffolding in this repo:
 - generic current-step setup updater for schema-backed fields
 - Cloudflare Tunnel provider boundary and setup-session provisioning endpoint
 - in-memory setup audit events for broker actions
+- non-secret Arch config snapshot export from setup state
 - unclaimed hostname setup invitation scaffold
 - optional Neynar channel eligibility adapter
 - in-memory eligible-channel slug reservation scaffold

@@ -194,3 +194,21 @@ curl -fsSL -X POST \
 The broker stores the generated install command and tunnel route status in the
 setup session. It does not mark the appliance as launched and does not unlock
 posting.
+
+## Arch Config Snapshot
+
+After verified setup state exists, the broker can export non-secret appliance
+config:
+
+```bash
+curl -fsSL -X POST \
+  http://localhost:3020/api/setup/sessions/SESSION_ID/arch/config
+```
+
+The snapshot includes structured config and `.env` values derived from the setup
+session. It is the setup-broker counterpart to Discourse writing wizard values
+into site settings.
+
+For `tunnel-local`, this export requires the Cloudflare Tunnel route to be
+provisioned. It does not include tunnel tokens, signer material, mnemonic
+material, or API tokens.

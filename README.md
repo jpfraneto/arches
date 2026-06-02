@@ -135,6 +135,17 @@ This is the first scaffold for Discourse-style setup provenance. It records
 session creation, channel refresh, step submission, slug reservation, and tunnel
 provisioning events without storing tunnel tokens or signer material.
 
+The setup broker can also export the server-derived Arch config snapshot:
+
+```bash
+curl -fsSL -X POST http://localhost:3020/api/setup/sessions/SESSION_ID/arch/config
+```
+
+This is the Arches equivalent of Discourse applying wizard fields into site
+settings. It returns structured config plus non-secret `.env` values such as
+`ARCH_SLUG`, `ARCH_DOMAIN`, `ARCH_SURFACE_TITLE`, and
+`ARCH_PROVENANCE_LABEL`. It does not include tunnel tokens or signer material.
+
 Arches is the seed, not the host identity. Each Arch is held up by the person or
 community running that appliance. Any app/factory Farcaster credential used by
 Arches may only request signer approval during setup; it must not become the FID

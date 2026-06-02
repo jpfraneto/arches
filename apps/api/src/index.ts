@@ -21,6 +21,8 @@ const archId = Bun.env.ARCH_SLUG ?? "local";
 const archDomain = Bun.env.ARCH_DOMAIN ?? "localhost";
 const adminFid = Bun.env.ARCH_ADMIN_FID ?? "";
 const supportEmail = Bun.env.ARCH_SUPPORT_EMAIL ?? "";
+const surfaceTitle = Bun.env.ARCH_SURFACE_TITLE ?? `/${archId}`;
+const provenanceLabel = Bun.env.ARCH_PROVENANCE_LABEL ?? `posted via ${archId}`;
 const port = Number(Bun.env.PORT ?? 3000);
 const experimentalPaymentsEnabled = parseBoolean(Bun.env.ARCHES_EXPERIMENTAL_PAYMENTS_ENABLED);
 const archesCoinSymbol = Bun.env.ARCHES_COIN_SYMBOL ?? "ARCHES";
@@ -55,9 +57,10 @@ app.get("/api/arch", (c) => {
     id: archId,
     slug: archId,
     domain: archDomain,
+    title: surfaceTitle,
     adminFid: adminFid ? Number(adminFid) : null,
     supportEmail,
-    provenanceLabel: `posted via ${archId}`,
+    provenanceLabel,
     publishing: {
       farcaster: {
         enabled: false,

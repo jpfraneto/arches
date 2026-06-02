@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { buildArchConfigSnapshot, renderEnvSnapshot } from "./arch-config";
 import {
   createChannelEligibilityProvider,
   type ChannelEligibilityProvider,
@@ -37,7 +38,8 @@ type SetupAuditEventType =
   | "step_submitted"
   | "slug_reserved"
   | "tunnel_provisioned"
-  | "tunnel_provision_failed";
+  | "tunnel_provision_failed"
+  | "arch_config_exported";
 
 type SetupAuditEvent = {
   id: string;
@@ -351,6 +353,41 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
         500,
       );
     }
+  });
+
+  app.post("/api/setup/sessions/:sessionId/arch/config", (c) => {
+    const sessionId = c.req.param("sessionId");
+    const record = sessions.get(sessionId);
+    if (!record) return c.json({ error: "setup session not found" }, 404);
+
+    const result = buildArchConfigSnapshot(record.state);
+    if (!result.ok) {
+      return c.json({ error: result.error, message: result.message }, result.status);
+    }
+
+    const updatedRecord = withSetupEvent(
+      {
+        ...record,
+        updatedAt: new Date().toISOString(),
+      },
+      "arch_config_exported",
+      {
+        actorFid: record.state.hostFid,
+        data: {
+          slug: result.config.arch.slug,
+          domain: result.config.arch.domain,
+          mode: result.config.hosting.mode,
+        },
+      },
+    );
+
+    sessions.set(sessionId, updatedRecord);
+
+    return c.json({
+      config: result.config,
+      env: renderEnvSnapshot(result.config.env),
+      events: updatedRecord.events,
+    });
   });
 
   app.post("/setup/:sessionId/steps/:stepId", async (c) => {
@@ -1398,6 +1435,8 @@ function eventDetail(event: SetupAuditEvent): string {
       return `${actor} provisioned${domain}`;
     case "tunnel_provision_failed":
       return `${actor} tunnel provisioning failed`;
+    case "arch_config_exported":
+      return `${actor} exported${domain} config`;
   }
 }
 

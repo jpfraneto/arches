@@ -665,6 +665,66 @@ describe("setup broker", () => {
     expect(body.events[0].type).toBe("session_created");
   });
 
+  test("rejects Arch config export before setup state is ready", async () => {
+    const app = createSetupBrokerApp();
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/arch/config`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.message).toContain("derives a host FID");
+  });
+
+  test("exports derived Arch config without tunnel tokens or signer material", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({
+        ...readyTunnelProvisioningState(),
+        tunnelId: "tunnel_123",
+        tunnelProvisioned: true,
+      }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/arch/config`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.config.arch).toEqual({
+      slug: "anky",
+      domain: "anky.arches.lat",
+      title: "/anky",
+      provenanceLabel: "posted via anky",
+      hostFid: 18350,
+      supportEmail: "support@arches.lat",
+    });
+    expect(body.config.hosting).toEqual({
+      mode: "tunnel-local",
+      tunnelId: "tunnel_123",
+      tunnelProvisioned: true,
+    });
+    expect(body.config.publishing).toEqual({
+      farcasterEnabled: false,
+      status: "not_implemented",
+    });
+    expect(body.env).toContain("ARCH_PROVENANCE_LABEL=posted via anky");
+    expect(body.env).toContain("CLOUDFLARE_TUNNEL_ID=tunnel_123");
+    expect(body.events.at(-1).type).toBe("arch_config_exported");
+    expect(JSON.stringify(body)).not.toContain("tunnel-token");
+    expect(JSON.stringify(body)).not.toContain("mnemonic");
+  });
+
   test("keeps dev state mutation disabled by default", async () => {
     const app = createSetupBrokerApp();
     const createResponse = await app.request("/api/setup/sessions", { method: "POST" });

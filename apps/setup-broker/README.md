@@ -91,6 +91,36 @@ host FID, Arch slug, and domain.
 Audit events must not store signer material, mnemonic data, Cloudflare API
 tokens, tunnel tokens, or full generated install commands.
 
+## Arch Config Export
+
+The broker can export a non-secret Arch config snapshot after setup has enough
+verified state:
+
+```bash
+curl -fsSL -X POST http://localhost:3020/api/setup/sessions/SESSION_ID/arch/config
+```
+
+The response includes structured JSON plus an `.env`-style block for the
+appliance:
+
+```text
+ARCH_SLUG=anky
+ARCH_DOMAIN=anky.arches.lat
+ARCHES_MODE=tunnel-local
+ARCH_ADMIN_FID=18350
+ARCH_SUPPORT_EMAIL=support@arches.lat
+ARCH_SURFACE_TITLE=/anky
+ARCH_PROVENANCE_LABEL=posted via anky
+ARCHES_PUBLISHING_ENABLED=false
+ARCHES_FARCASTER_PUBLISHING_STATUS=not_implemented
+CLOUDFLARE_TUNNEL_ID=tunnel_123
+```
+
+For `tunnel-local`, export is gated on tunnel provisioning. The snapshot does
+not include the Cloudflare Tunnel token, signer material, mnemonic material, or
+private API tokens. The installer command remains the delivery path for the
+tunnel token until a safer installer handoff is implemented.
+
 ## Channel Eligibility
 
 The broker has an optional channel eligibility provider. The public refresh

@@ -304,6 +304,13 @@ reservation, tunnel provisioning, appliance launch, publish probes, and composer
 unlock. These events should prove setup provenance without storing signer
 secrets, mnemonic material, API tokens, tunnel tokens, or full install commands.
 
+The broker also exports the first Arch config snapshot. This is the Arches
+equivalent of Discourse applying wizard fields into `SiteSetting`: verified
+session state becomes appliance config fields such as `ARCH_SLUG`,
+`ARCH_DOMAIN`, `ARCH_ADMIN_FID`, `ARCH_SURFACE_TITLE`, and
+`ARCH_PROVENANCE_LABEL`. The snapshot is intentionally non-secret and does not
+carry tunnel tokens or signer material.
+
 ## Implementation Phases
 
 1. Define setup session schema and terminal renderer (implemented in
@@ -321,12 +328,13 @@ secrets, mnemonic material, API tokens, tunnel tokens, or full install commands.
    session endpoint started in `apps/setup-broker`).
 8. Add setup audit/provenance events (started as in-memory events in
    `apps/setup-broker`).
-9. Teach `scripts/install.sh` to call the broker when no flags are passed
+9. Add Arch config export from setup state (started in `apps/setup-broker`).
+10. Teach `scripts/install.sh` to call the broker when no flags are passed
    (started with the terminal session handoff).
-10. Add unclaimed-subdomain page and wildcard routing (started in
+11. Add unclaimed-subdomain page and wildcard routing (started in
    `apps/setup-broker`).
-11. Wire Hypersnap Lite publish probe and signer storage.
-12. Enable posting only when the publish contract is confirmed.
+12. Wire Hypersnap Lite publish probe and signer storage.
+13. Enable posting only when the publish contract is confirmed.
 
 ## Product Principle
 
