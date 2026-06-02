@@ -172,6 +172,9 @@ See `docs/DOMAIN_SETUP.md` for DNS and static hosting notes.
 
 - `apps/api` contains a minimal Bun + Hono API.
 - `apps/web` contains a minimal web composer and feed.
+- `packages/setup-schema` contains the Discourse-inspired setup session schema
+  that can be rendered by a future terminal installer, setup broker, or browser
+  wizard.
 - `templates` contains the Docker Compose, Caddy, and environment templates.
 - `.github/workflows/publish-images.yml` publishes the appliance images to GHCR.
 
@@ -213,6 +216,13 @@ Build the API and web images locally:
 ```bash
 docker build -t arches-api:local apps/api
 docker build -t arches-web:local apps/web
+```
+
+Test the setup schema:
+
+```bash
+cd packages/setup-schema
+bun test
 ```
 
 ## Experimental $ARCHES Discount

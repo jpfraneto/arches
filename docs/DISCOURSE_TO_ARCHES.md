@@ -281,9 +281,15 @@ site/
 
 The broker is allowed to coordinate. It is not allowed to own every Arch.
 
+`packages/setup-schema` now contains the first concrete version of this shape:
+renderer-neutral setup steps, fields, choices, completion state, submission
+validation, and the product invariant that composer unlock remains blocked
+until Farcaster publishing has been verified.
+
 ## Implementation Phases
 
-1. Define setup session schema and terminal renderer.
+1. Define setup session schema (started in `packages/setup-schema`) and add a
+   terminal renderer.
 2. Add setup broker session API with in-memory storage for local development.
 3. Add Farcaster QR verification and host FID derivation.
 4. Add Neynar channel lookup for eligible channels.
