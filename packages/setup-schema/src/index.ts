@@ -56,6 +56,8 @@ export type SetupState = {
   farcasterQrUrl?: string;
   farcasterNonce?: string;
   farcasterDomain?: string;
+  farcasterChannelToken?: string;
+  farcasterChannelState?: "pending" | "completed";
   hostFid?: number;
   signerApproved?: boolean;
   eligibleChannels?: EligibleChannel[];

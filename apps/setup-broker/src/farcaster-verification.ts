@@ -1,8 +1,38 @@
 import { createAppClient, viemConnector } from "@farcaster/auth-client";
 
 export type FarcasterVerificationProvider = {
+  createSignInChannel(request: FarcasterSignInChannelRequest): Promise<FarcasterSignInChannel>;
+  getSignInChannelStatus(channelToken: string): Promise<FarcasterSignInChannelStatus>;
   verifyHostSignature(request: FarcasterVerificationRequest): Promise<FarcasterVerificationResult>;
 };
+
+export type FarcasterSignInChannelRequest = {
+  sessionId: string;
+  nonce: string;
+  domain: string;
+  siweUri: string;
+};
+
+export type FarcasterSignInChannel = {
+  channelToken: string;
+  url: string;
+  nonce: string;
+};
+
+export type FarcasterSignInChannelStatus =
+  | {
+      state: "pending";
+      nonce: string;
+    }
+  | {
+      state: "completed";
+      nonce: string;
+      message: string;
+      signature: string;
+      fid?: number;
+      username?: string;
+      displayName?: string;
+    };
 
 export type FarcasterVerificationRequest = {
   sessionId: string;
@@ -26,6 +56,40 @@ export type FarcasterVerificationEnv = {
 };
 
 type FarcasterAuthClient = {
+  createChannel(args: {
+    siweUri: string;
+    domain: string;
+    nonce: string;
+    requestId: string;
+    acceptAuthAddress: boolean;
+  }): Promise<{
+    isError: boolean;
+    data?: {
+      channelToken: string;
+      url: string;
+      nonce: string;
+    };
+    error?: {
+      message?: string;
+      errCode?: unknown;
+    };
+  }>;
+  status(args: { channelToken: string }): Promise<{
+    isError: boolean;
+    data?: {
+      state: "pending" | "completed";
+      nonce: string;
+      message?: string;
+      signature?: `0x${string}`;
+      fid?: number;
+      username?: string;
+      displayName?: string;
+    };
+    error?: {
+      message?: string;
+      errCode?: unknown;
+    };
+  }>;
   verifySignInMessage(args: {
     nonce: string;
     domain: string;
@@ -54,6 +118,20 @@ export class FarcasterVerificationError extends Error {
 }
 
 export class NoopFarcasterVerificationProvider implements FarcasterVerificationProvider {
+  async createSignInChannel(): Promise<FarcasterSignInChannel> {
+    throw new FarcasterVerificationError(
+      "Farcaster auth channel creation is not configured. Set ARCHES_FARCASTER_VERIFIER=auth-client to create a Sign In with Farcaster QR URL.",
+      501,
+    );
+  }
+
+  async getSignInChannelStatus(): Promise<FarcasterSignInChannelStatus> {
+    throw new FarcasterVerificationError(
+      "Farcaster auth channel polling is not configured. Set ARCHES_FARCASTER_VERIFIER=auth-client to poll Sign In with Farcaster status.",
+      501,
+    );
+  }
+
   async verifyHostSignature(): Promise<FarcasterVerificationResult> {
     throw new FarcasterVerificationError(
       "Farcaster verification is not configured. The setup broker must verify a Sign In with Farcaster signature before deriving the host FID.",
@@ -67,6 +145,66 @@ export class AuthClientFarcasterVerificationProvider implements FarcasterVerific
     private appClient: FarcasterAuthClient,
     private acceptAuthAddress = true,
   ) {}
+
+  async createSignInChannel(
+    request: FarcasterSignInChannelRequest,
+  ): Promise<FarcasterSignInChannel> {
+    const result = await this.appClient.createChannel({
+      siweUri: request.siweUri,
+      domain: request.domain,
+      nonce: request.nonce,
+      requestId: request.sessionId,
+      acceptAuthAddress: this.acceptAuthAddress,
+    });
+
+    if (result.isError || !result.data?.channelToken || !result.data.url || !result.data.nonce) {
+      throw new FarcasterVerificationError(
+        result.error?.message ?? "Farcaster auth channel creation failed.",
+        statusForAuthClientError(result.error),
+      );
+    }
+
+    return {
+      channelToken: result.data.channelToken,
+      url: result.data.url,
+      nonce: result.data.nonce,
+    };
+  }
+
+  async getSignInChannelStatus(channelToken: string): Promise<FarcasterSignInChannelStatus> {
+    const result = await this.appClient.status({ channelToken });
+
+    if (result.isError || !result.data?.state || !result.data.nonce) {
+      throw new FarcasterVerificationError(
+        result.error?.message ?? "Farcaster auth channel status lookup failed.",
+        statusForAuthClientError(result.error),
+      );
+    }
+
+    if (result.data.state === "pending") {
+      return {
+        state: "pending",
+        nonce: result.data.nonce,
+      };
+    }
+
+    if (!result.data.message || !result.data.signature) {
+      throw new FarcasterVerificationError(
+        "Farcaster auth channel completed without a SIWF message and signature.",
+        502,
+      );
+    }
+
+    return {
+      state: "completed",
+      nonce: result.data.nonce,
+      message: result.data.message,
+      signature: result.data.signature,
+      fid: result.data.fid,
+      username: result.data.username,
+      displayName: result.data.displayName,
+    };
+  }
 
   async verifyHostSignature(
     request: FarcasterVerificationRequest,

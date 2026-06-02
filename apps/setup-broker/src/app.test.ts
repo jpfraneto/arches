@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { createSetupBrokerApp, resetSetupBrokerSessionsForTests } from "./app";
+import { FarcasterVerificationError } from "./farcaster-verification";
 import { TunnelProvisioningError } from "./tunnel-provisioning";
 
 describe("setup broker", () => {
@@ -80,6 +81,7 @@ describe("setup broker", () => {
   test("rejects manual FID claims in Farcaster verification payloads", async () => {
     const app = createSetupBrokerApp({
       farcasterVerificationProvider: {
+        ...inactiveFarcasterChannelProvider(),
         async verifyHostSignature() {
           throw new Error("manual FID payload should fail before provider is called");
         },
@@ -110,6 +112,7 @@ describe("setup broker", () => {
     const app = createSetupBrokerApp({
       publicOrigin: "https://setup.arches.test",
       farcasterVerificationProvider: {
+        ...inactiveFarcasterChannelProvider(),
         async verifyHostSignature(request) {
           expect(request.sessionId).toStartWith("setup_");
           expect(request.domain).toBe("setup.arches.test");
@@ -142,6 +145,107 @@ describe("setup broker", () => {
     expect(body.events.at(-1).type).toBe("farcaster_verified");
     expect(body.events.at(-1).actorFid).toBe(18350);
     expect(body.events.at(-1).data.username).toBe("anky");
+  });
+
+  test("creates a Farcaster auth channel during setup session creation", async () => {
+    const app = createSetupBrokerApp({
+      publicOrigin: "https://setup.arches.test",
+      farcasterVerificationProvider: {
+        async createSignInChannel(request) {
+          expect(request.domain).toBe("setup.arches.test");
+          expect(request.siweUri).toStartWith("https://setup.arches.test/setup/setup_");
+          expect(request.nonce).toHaveLength(17);
+          return {
+            channelToken: "channel_123",
+            url: "farcaster://connect?channelToken=channel_123",
+            nonce: request.nonce,
+          };
+        },
+        async getSignInChannelStatus() {
+          throw new Error("status is not needed for session creation");
+        },
+        async verifyHostSignature() {
+          throw new Error("verification is not needed for session creation");
+        },
+      },
+    });
+    const response = await app.request("/api/setup/sessions", { method: "POST" });
+    const body = await response.json();
+    const pageResponse = await app.request(`/setup/${body.session.sessionId}`);
+    const html = await pageResponse.text();
+
+    expect(response.status).toBe(201);
+    expect(body.session.steps[0].fields[0].value).toBe(
+      "farcaster://connect?channelToken=channel_123",
+    );
+    expect(body.next.channelStatus).toBe("pending");
+    expect(body.events.map((event) => event.type)).toContain("farcaster_channel_created");
+    expect(html).toContain('class="qr-link"');
+    expect(html).toContain('href="farcaster://connect?channelToken=channel_123"');
+  });
+
+  test("polls a pending Farcaster auth channel without deriving a host FID", async () => {
+    const app = createSetupBrokerApp({
+      farcasterVerificationProvider: authChannelProvider({
+        status: {
+          state: "pending",
+          nonce: "nonce-from-channel",
+        },
+      }),
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/farcaster/status`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.session.currentStepId).toBe("verify-farcaster");
+    expect(body.next.channelStatus).toBe("pending");
+  });
+
+  test("rejects Farcaster auth channel polling when no channel exists", async () => {
+    const app = createSetupBrokerApp();
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/farcaster/status`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.message).toContain("does not have a Farcaster auth channel");
+  });
+
+  test("polls a completed Farcaster auth channel and derives the host FID", async () => {
+    const app = createSetupBrokerApp({
+      farcasterVerificationProvider: authChannelProvider({
+        status: {
+          state: "completed",
+          nonce: "nonce-from-channel",
+          message: "signed SIWF message",
+          signature: "0xsignature",
+          username: "anky",
+          displayName: "Anky",
+        },
+      }),
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/farcaster/status`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.session.currentStepId).toBe("prepare-signer");
+    expect(body.next.channelStatus).toBe("completed");
+    expect(body.events.at(-1).type).toBe("farcaster_verified");
+    expect(body.events.at(-1).actorFid).toBe(18350);
   });
 
   test("requires host FID before refreshing eligible channels", async () => {
@@ -934,5 +1038,51 @@ function readyTunnelProvisioningState() {
     surfaceTitle: "/anky",
     provenanceLabel: "posted via anky",
     surfaceConfigured: true,
+  };
+}
+
+function inactiveFarcasterChannelProvider() {
+  return {
+    async createSignInChannel() {
+      throw new FarcasterVerificationError("Farcaster auth channel creation is disabled.", 501);
+    },
+    async getSignInChannelStatus() {
+      throw new FarcasterVerificationError("Farcaster auth channel polling is disabled.", 501);
+    },
+  };
+}
+
+function authChannelProvider(options: {
+  status:
+    | {
+        state: "pending";
+        nonce: string;
+      }
+    | {
+        state: "completed";
+        nonce: string;
+        message: string;
+        signature: string;
+        username?: string;
+        displayName?: string;
+      };
+}) {
+  return {
+    async createSignInChannel(request) {
+      return {
+        channelToken: "channel_123",
+        url: "farcaster://connect?channelToken=channel_123",
+        nonce: request.nonce === "nonce-from-channel" ? request.nonce : "nonce-from-channel",
+      };
+    },
+    async getSignInChannelStatus(channelToken) {
+      expect(channelToken).toBe("channel_123");
+      return options.status;
+    },
+    async verifyHostSignature(request) {
+      expect(request.message).toBe("signed SIWF message");
+      expect(request.signature).toBe("0xsignature");
+      return { fid: 18350 };
+    },
   };
 }

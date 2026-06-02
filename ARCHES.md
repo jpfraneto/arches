@@ -284,6 +284,7 @@ Implemented scaffolding in this repo:
 - Farcaster verification provider boundary with per-session nonce/domain
   challenge
 - optional official Farcaster auth-client SIWF verifier
+- Farcaster auth relay channel creation and status polling scaffold
 - Cloudflare Tunnel provider boundary and setup-session provisioning endpoint
 - in-memory setup audit events for broker actions
 - non-secret Arch config snapshot export from setup state
@@ -294,7 +295,7 @@ Implemented scaffolding in this repo:
 
 Not implemented yet:
 
-- production SIWF QR/channel relay UX
+- production SIWF QR rendering and browser auto-polling UX
 - signer request and signer storage flow
 - production-authenticated Cloudflare Tunnel provisioning behind the broker
 - persistent setup sessions, audit events, and reservations

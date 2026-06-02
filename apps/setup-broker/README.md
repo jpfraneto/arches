@@ -21,6 +21,10 @@ bun run src/index.ts
 accepts custody-address signatures. The broker still requires the posted SIWF
 nonce to match the setup session nonce before calling the verifier.
 
+When the auth-client verifier is enabled, new setup sessions ask the Farcaster
+auth relay for a sign-in channel. The session's Farcaster QR field becomes the
+relay URL that should be opened or rendered as a QR code for the host.
+
 Run locally:
 
 ```bash
@@ -57,6 +61,16 @@ Render terminal output:
 ```bash
 curl -fsSL http://localhost:3020/api/setup/sessions/SESSION_ID/terminal
 ```
+
+Poll a Farcaster auth channel:
+
+```bash
+curl -fsSL -X POST http://localhost:3020/api/setup/sessions/SESSION_ID/farcaster/status
+```
+
+If the channel is pending, the setup session remains on `verify-farcaster`. If
+the channel is completed, the broker verifies the returned SIWF message and
+signature before deriving the host FID.
 
 ## Step Updates
 

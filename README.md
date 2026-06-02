@@ -91,9 +91,10 @@ ARCHES_SETUP_BROKER_URL=http://localhost:3020 bash scripts/install.sh
 The broker returns the Discourse-style setup state as terminal text plus a
 browser setup URL. It now has a Farcaster verification provider boundary with a
 per-session nonce/domain challenge. Set `ARCHES_FARCASTER_VERIFIER=auth-client`
-to verify SIWF messages with the official Farcaster auth client. The default
-provider still returns `501`, so this path does not generate appliance files or
-enable posting until a verifier is configured.
+to create/poll Farcaster auth relay channels and verify SIWF messages with the
+official Farcaster auth client. The default provider still returns `501`, so
+this path does not generate appliance files or enable posting until a verifier
+is configured.
 
 The setup broker also renders unclaimed `*.arches.lat` hostnames as creation
 invitations. Visiting an unclaimed Arch should point the host toward Farcaster

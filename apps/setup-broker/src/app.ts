@@ -15,6 +15,7 @@ import {
   createFarcasterVerificationProvider,
   type FarcasterVerificationProvider,
   type FarcasterVerificationResult,
+  type FarcasterSignInChannelStatus,
 } from "./farcaster-verification";
 import {
   buildSetupSession,
@@ -43,6 +44,7 @@ type SessionRecord = {
 type SetupAuditEventType =
   | "session_created"
   | "dev_state_updated"
+  | "farcaster_channel_created"
   | "farcaster_verified"
   | "channels_refreshed"
   | "step_submitted"
@@ -76,6 +78,7 @@ type SessionResponse = {
   next: {
     verification: "pending";
     verificationUrl: string;
+    channelStatus?: "pending" | "completed";
     nonce?: string;
     domain?: string;
     message: string;
@@ -121,25 +124,37 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     return c.redirect("/setup", 302);
   });
 
-  app.post("/api/setup/sessions", (c) => {
+  app.post("/api/setup/sessions", async (c) => {
     const requestedSlug = normalizeSlug(c.req.query("requested"));
-    const state = createSetupSession(publicOrigin, requestedSlug);
+    const state = await createSetupSession(
+      publicOrigin,
+      requestedSlug,
+      farcasterVerificationProvider,
+    );
     const record = sessions.get(state.sessionId)!;
 
     return c.json(sessionResponse(record, publicOrigin), 201);
   });
 
-  app.post("/api/setup/sessions/terminal", (c) => {
-    const state = createSetupSession(publicOrigin);
+  app.post("/api/setup/sessions/terminal", async (c) => {
+    const state = await createSetupSession(
+      publicOrigin,
+      undefined,
+      farcasterVerificationProvider,
+    );
     const record = sessions.get(state.sessionId)!;
     const response = sessionResponse(record, publicOrigin);
 
     return c.text(`${response.terminal}\n\nBrowser setup: ${response.setupUrl}\n`);
   });
 
-  app.get("/setup", (c) => {
+  app.get("/setup", async (c) => {
     const requestedSlug = normalizeSlug(c.req.query("requested"));
-    const state = createSetupSession(publicOrigin, requestedSlug);
+    const state = await createSetupSession(
+      publicOrigin,
+      requestedSlug,
+      farcasterVerificationProvider,
+    );
     return c.redirect(`/setup/${state.sessionId}`, 302);
   });
 
@@ -220,6 +235,52 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
         {
           error: "farcaster verification failed",
           message: "The setup broker could not verify the Farcaster signature.",
+        },
+        502,
+      );
+    }
+  });
+
+  app.post("/api/setup/sessions/:sessionId/farcaster/status", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const record = sessions.get(sessionId);
+    if (!record) return c.json({ error: "setup session not found" }, 404);
+
+    const channelToken = record.state.farcasterChannelToken;
+    if (!channelToken) {
+      return c.json(
+        {
+          error: "farcaster auth channel missing",
+          message:
+            "This setup session does not have a Farcaster auth channel to poll. Configure the auth-client verifier and create a new session.",
+        },
+        409,
+      );
+    }
+
+    try {
+      const status = await farcasterVerificationProvider.getSignInChannelStatus(channelToken);
+      const updatedRecord = await applyFarcasterChannelStatus(
+        record,
+        status,
+        farcasterVerificationProvider,
+        publicOrigin,
+      );
+      sessions.set(sessionId, updatedRecord);
+
+      return c.json(sessionResponse(updatedRecord, publicOrigin));
+    } catch (error) {
+      if (error instanceof FarcasterVerificationError) {
+        return c.json(
+          { error: "farcaster auth status failed", message: error.message },
+          error.status,
+        );
+      }
+
+      return c.json(
+        {
+          error: "farcaster auth status failed",
+          message: "The setup broker could not poll the Farcaster auth channel.",
         },
         502,
       );
@@ -518,25 +579,55 @@ export function resetSetupBrokerSessionsForTests() {
   slugReservations.clear();
 }
 
-function createSetupSession(publicOrigin: string, requestedSlug?: string): SetupState {
+async function createSetupSession(
+  publicOrigin: string,
+  requestedSlug: string | undefined,
+  farcasterVerificationProvider: FarcasterVerificationProvider,
+): Promise<SetupState> {
   const sessionId = createSessionId();
   const now = new Date().toISOString();
   const verificationUrl = `${publicOrigin}/api/setup/sessions/${sessionId}/farcaster/verify`;
-  const state: SetupState = {
+  let state: SetupState = {
     sessionId,
     requestedSlug,
     farcasterQrUrl: verificationUrl,
     farcasterNonce: createFarcasterNonce(),
     farcasterDomain: originHost(publicOrigin),
   };
+  const events = [
+    createSetupEvent(sessionId, "session_created", {
+      data: { requestedSlug },
+    }),
+  ];
+
+  try {
+    const channel = await farcasterVerificationProvider.createSignInChannel({
+      sessionId,
+      nonce: state.farcasterNonce!,
+      domain: state.farcasterDomain!,
+      siweUri: `${publicOrigin}/setup/${sessionId}`,
+    });
+    state = {
+      ...state,
+      farcasterQrUrl: channel.url,
+      farcasterNonce: channel.nonce,
+      farcasterChannelToken: channel.channelToken,
+      farcasterChannelState: "pending",
+    };
+    events.push(
+      createSetupEvent(sessionId, "farcaster_channel_created", {
+        data: { configured: true },
+      }),
+    );
+  } catch (error) {
+    if (!(error instanceof FarcasterVerificationError) || error.status !== 501) {
+      throw error;
+    }
+  }
 
   sessions.set(sessionId, {
     state,
-    events: [
-      createSetupEvent(sessionId, "session_created", {
-        data: { requestedSlug },
-      }),
-    ],
+    events,
     createdAt: now,
     updatedAt: now,
   });
@@ -557,6 +648,7 @@ function sessionResponse(record: SessionRecord, publicOrigin: string): SessionRe
     next: {
       verification: "pending",
       verificationUrl,
+      channelStatus: state.farcasterChannelState,
       nonce: state.farcasterNonce,
       domain: state.farcasterDomain,
       message: state.hostFid
@@ -630,6 +722,67 @@ function withStepSideEffectEvents(
   }
 
   return record;
+}
+
+async function applyFarcasterChannelStatus(
+  record: SessionRecord,
+  status: FarcasterSignInChannelStatus,
+  farcasterVerificationProvider: FarcasterVerificationProvider,
+  publicOrigin: string,
+): Promise<SessionRecord> {
+  if (status.nonce !== record.state.farcasterNonce) {
+    throw new FarcasterVerificationError(
+      "Farcaster auth channel nonce does not match this setup session.",
+      400,
+    );
+  }
+
+  if (status.state === "pending") {
+    return {
+      ...record,
+      state: {
+        ...record.state,
+        farcasterChannelState: "pending",
+      },
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  const verifiedHost = await farcasterVerificationProvider.verifyHostSignature({
+    sessionId: record.state.sessionId,
+    nonce: record.state.farcasterNonce!,
+    domain: record.state.farcasterDomain ?? originHost(publicOrigin),
+    message: status.message,
+    signature: status.signature,
+  });
+  const result = applyFarcasterVerification(record.state, {
+    fid: verifiedHost.fid,
+    username: status.username ?? verifiedHost.username,
+    displayName: status.displayName ?? verifiedHost.displayName,
+  });
+  if (!result.ok) {
+    throw new FarcasterVerificationError(result.message, result.status);
+  }
+
+  return withSetupEvent(
+    {
+      ...record,
+      state: {
+        ...result.state,
+        farcasterChannelState: "completed",
+      },
+      updatedAt: new Date().toISOString(),
+    },
+    "farcaster_verified",
+    {
+      actorFid: verifiedHost.fid,
+      data: {
+        fid: verifiedHost.fid,
+        username: status.username ?? verifiedHost.username,
+        displayName: status.displayName ?? verifiedHost.displayName,
+      },
+    },
+  );
 }
 
 function removeUndefinedData(
@@ -751,6 +904,7 @@ function applyFarcasterVerification(
     state: {
       ...state,
       hostFid: verifiedHost.fid,
+      farcasterChannelState: "completed",
       signerApproved: undefined,
       eligibleChannels: undefined,
       selectedChannelSlug: undefined,
@@ -1432,6 +1586,19 @@ function renderSetupHtml(session: SetupSession, events: SetupAuditEvent[]): stri
       font-size: 13px;
     }
 
+    .qr-link {
+      display: inline-flex;
+      align-items: center;
+      min-height: 38px;
+      padding: 0 12px;
+      border-radius: 6px;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font-weight: 650;
+      text-decoration: none;
+      overflow-wrap: anywhere;
+    }
+
     pre {
       white-space: pre-wrap;
       overflow-wrap: anywhere;
@@ -1652,6 +1819,8 @@ function eventDetail(event: SetupAuditEvent): string {
       return `${actor} created setup`;
     case "dev_state_updated":
       return "dev-only state update";
+    case "farcaster_channel_created":
+      return `${actor} created Farcaster auth channel`;
     case "farcaster_verified":
       return `${actor} verified Farcaster`;
     case "channels_refreshed":
@@ -1691,8 +1860,9 @@ function renderField(field: SetupField, editable = false): string {
     case "dropdown":
       return renderSelectField(field, editable);
     case "status":
-    case "qr":
       return renderStatusField(field);
+    case "qr":
+      return renderQrField(field);
     case "copy":
       return renderCopyField(field);
     case "text":
@@ -1759,6 +1929,18 @@ function renderStatusField(field: SetupField): string {
   return `<div class="field status-field field-${escapeHtml(field.id)}">
     <label>${escapeHtml(requiredLabel(field))}</label>
     <span class="status">${escapeHtml(field.value ?? "waiting")}</span>
+    ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ""}
+  </div>`;
+}
+
+function renderQrField(field: SetupField): string {
+  return `<div class="field qr-field field-${escapeHtml(field.id)}">
+    <label>${escapeHtml(requiredLabel(field))}</label>
+    ${
+      field.value
+        ? `<a class="qr-link" href="${escapeHtml(field.value)}">${escapeHtml(field.value)}</a>`
+        : `<span class="status">waiting</span>`
+    }
     ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ""}
   </div>`;
 }
