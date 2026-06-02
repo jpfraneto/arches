@@ -191,9 +191,10 @@ provider-backed action buttons. Browser action buttons post through the generic
 setup action controller at `/setup/:sessionId/actions/:actionId`; the broker
 only executes actions present on the current active server-defined step.
 
-Each setup response also includes a compact server-derived summary with
-readiness, progress count, blocked count, current step title, and next action.
-The terminal output and browser sidebar render the same summary.
+Each setup response also includes `schemaVersion`, broker `createdAt` and
+`updatedAt` timestamps, and a compact server-derived summary with readiness,
+progress count, blocked count, current step title, and next action. The terminal
+output and browser sidebar render the same summary.
 
 Arches is the seed, not the host identity. Each Arch is held up by the person or
 community running that appliance. Any app/factory Farcaster credential used by

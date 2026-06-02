@@ -114,8 +114,11 @@ export type SetupState = {
 };
 
 export type SetupSession = {
+  schemaVersion: 1;
   sessionId: string;
   requestedSlug?: string;
+  createdAt?: string;
+  updatedAt?: string;
   start: SetupStepId;
   currentStepId: SetupStepId;
   completed: boolean;
@@ -239,6 +242,7 @@ export function buildSetupSession(state: SetupState): SetupSession {
   const completed = steps.every((step) => step.status === "completed");
 
   return {
+    schemaVersion: 1,
     sessionId: state.sessionId,
     requestedSlug: state.requestedSlug,
     start,

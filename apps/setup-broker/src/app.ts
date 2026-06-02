@@ -247,7 +247,7 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     const record = sessions.get(c.req.param("sessionId"));
     if (!record) return c.text("setup session not found", 404);
 
-    return c.text(renderTerminalSession(buildSetupSession(record.state)));
+    return c.text(renderTerminalSession(setupSessionWithProvenance(record)));
   });
 
   app.post("/api/setup/sessions/:sessionId/farcaster/verify", async (c) => {
@@ -1023,7 +1023,14 @@ function sessionResponse(record: SetupSessionRecord, publicOrigin: string): Sess
 }
 
 function setupSessionWithProvenance(record: SetupSessionRecord): SetupSession {
-  return annotateStepProvenance(buildSetupSession(record.state), record.events);
+  return annotateStepProvenance(
+    {
+      ...buildSetupSession(record.state),
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+    },
+    record.events,
+  );
 }
 
 function annotateStepProvenance(

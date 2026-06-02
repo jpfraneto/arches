@@ -17,6 +17,7 @@ describe("buildSetupSession", () => {
       farcasterQrUrl: "https://example.com/qr",
     });
 
+    expect(session.schemaVersion).toBe(1);
     expect(session.start).toBe("verify-farcaster");
     expect(session.currentStepId).toBe("verify-farcaster");
     expect(session.completed).toBe(false);

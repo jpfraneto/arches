@@ -330,6 +330,9 @@ Arches' Farcaster-first setup contract.
 It also carries a server-derived setup summary with readiness, progress count,
 blocked step count, current step title, and next action so terminal and browser
 renderers share the same operator status model.
+The serialized session includes `schemaVersion`, `createdAt`, and `updatedAt`
+so future durable stores can migrate and recover setup sessions deliberately
+instead of dumping raw process memory to disk.
 It also supports field-level error descriptions so browser submissions can stay
 inside the wizard when validation fails.
 

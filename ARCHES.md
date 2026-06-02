@@ -281,6 +281,7 @@ Implemented scaffolding in this repo:
 - setup broker scaffold in `apps/setup-broker`
 - terminal and browser setup rendering
 - server-derived setup summary/readiness rendering
+- versioned setup-session serialization with broker created/updated timestamps
 - generic current-step setup updater for schema-backed fields
 - Discourse-style setup step metadata, browser progress, step actions, and
   field-error rendering

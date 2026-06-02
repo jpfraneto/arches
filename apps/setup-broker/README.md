@@ -177,6 +177,11 @@ behind an injectable setup store boundary in `src/setup-store.ts`.
 future durable adapter can replace the process-local store without changing the
 wizard routes or action handlers.
 
+Setup session responses include `schemaVersion`, `createdAt`, and `updatedAt`.
+That gives future durable storage a migration and recovery hook. Raw file
+persistence is still intentionally not enabled, because current setup state can
+include short-lived delivery fields such as generated installer commands.
+
 The broker now also derives step provenance from those events. Completed steps
 in the session schema can include `completedAt`, `completedByFid`,
 `completionEventId`, and `completionEventType`, and the browser sidebar renders

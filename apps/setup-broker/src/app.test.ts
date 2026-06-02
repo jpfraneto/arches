@@ -19,7 +19,10 @@ describe("setup broker", () => {
     const body = await response.json();
 
     expect(response.status).toBe(201);
+    expect(body.session.schemaVersion).toBe(1);
     expect(body.session.sessionId).toStartWith("setup_");
+    expect(body.session.createdAt).toBeString();
+    expect(body.session.updatedAt).toBe(body.session.createdAt);
     expect(body.session.currentStepId).toBe("verify-farcaster");
     expect(body.session.completed).toBe(false);
     expect(body.session.summary).toEqual({
@@ -58,6 +61,40 @@ describe("setup broker", () => {
     expect((await sessionResponse.json()).session.sessionId).toBe(sessionId);
     expect(terminalResponse.status).toBe(200);
     expect(await terminalResponse.text()).toContain("Current step: Verify Farcaster");
+  });
+
+  test("updates setup session timestamps after broker mutations", async () => {
+    const app = createSetupBrokerApp({
+      publicOrigin: "https://setup.arches.test",
+      farcasterVerificationProvider: {
+        ...inactiveFarcasterChannelProvider(),
+        async verifyHostSignature() {
+          return { fid: 18350 };
+        },
+      },
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await new Promise((resolve) => setTimeout(resolve, 2));
+
+    const verifyResponse = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/farcaster/verify`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          nonce: created.next.nonce,
+          message: "signed SIWF message",
+          signature: "0xsignature",
+        }),
+        headers: { "content-type": "application/json" },
+      },
+    );
+    const verified = await verifyResponse.json();
+
+    expect(verifyResponse.status).toBe(200);
+    expect(verified.session.createdAt).toBe(created.session.createdAt);
+    expect(verified.session.updatedAt).toBeString();
+    expect(verified.session.updatedAt).not.toBe(created.session.updatedAt);
   });
 
   test("can share setup sessions through an injected store", async () => {
