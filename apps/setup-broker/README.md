@@ -171,6 +171,11 @@ server after the step succeeds. The scaffold is intentionally in-memory for now;
 production storage should make these events durable and queryable by session,
 host FID, Arch slug, and domain.
 
+The in-memory session, slug reservation, and signer request token maps now sit
+behind a setup store boundary in `src/setup-store.ts`. That adapter still keeps
+data process-local, but it gives the broker one replacement point for a future
+durable store instead of spreading raw `Map` ownership through the app.
+
 The broker now also derives step provenance from those events. Completed steps
 in the session schema can include `completedAt`, `completedByFid`,
 `completionEventId`, and `completionEventType`, and the browser sidebar renders

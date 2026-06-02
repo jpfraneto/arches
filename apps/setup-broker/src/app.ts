@@ -28,6 +28,7 @@ import {
   type SignerApprovalProvider,
   type SignerStatus,
 } from "./signer-approval";
+import { createInMemorySetupBrokerStore } from "./setup-store";
 import {
   buildSetupSession,
   findStep,
@@ -134,9 +135,10 @@ type ActiveActionResult =
       message: string;
     };
 
-const sessions = new Map<string, SessionRecord>();
-const slugReservations = new Map<string, string>();
-const signerRequestTokens = new Map<string, string>();
+const setupStore = createInMemorySetupBrokerStore<SessionRecord>();
+const sessions = setupStore.sessions;
+const slugReservations = setupStore.slugReservations;
+const signerRequestTokens = setupStore.signerRequestTokens;
 const RESERVED_ARCHES_SUBDOMAINS = new Set(["install", "setup", "www"]);
 
 export function createSetupBrokerApp(options: BrokerOptions = {}) {
@@ -922,9 +924,7 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
 }
 
 export function resetSetupBrokerSessionsForTests() {
-  sessions.clear();
-  slugReservations.clear();
-  signerRequestTokens.clear();
+  setupStore.clear();
 }
 
 async function createSetupSession(

@@ -287,9 +287,11 @@ focused browser setup page at `/setup`, renders unclaimed `*.arches.lat`
 hostnames as setup invitations, includes an optional Neynar channel eligibility
 adapter, includes a generic current-step updater for schema-backed browser/API
 submissions, includes the first Cloudflare Tunnel provisioning provider boundary,
-records an in-memory setup audit trail for successful setup actions, and
-includes a Farcaster verification provider boundary that rejects manual identity
-claims. It can use the official Farcaster auth-client verifier when
+records an in-memory setup audit trail for successful setup actions, and keeps
+session, reservation, and signer request token state behind a setup store
+adapter boundary. It also includes a Farcaster verification provider boundary
+that rejects manual identity claims. It can use the official Farcaster
+auth-client verifier when
 `ARCHES_FARCASTER_VERIFIER=auth-client`; in that mode it creates Farcaster auth
 relay channels, stores the relay URL on the setup session, polls channel status,
 verifies completed SIWF messages before deriving the host FID, and renders an
@@ -378,7 +380,7 @@ Cloudflare routing, and appliance config as the underlying infra.
 1. Define setup session schema and terminal renderer (implemented in
    `packages/setup-schema`).
 2. Add setup broker session API with in-memory storage for local development
-   (started in `apps/setup-broker`).
+   (started in `apps/setup-broker`; store adapter boundary added).
 3. Add browser/API step updater for the current active setup step (started in
    `apps/setup-broker`).
 4. Add Farcaster QR verification and host FID derivation (provider boundary,
