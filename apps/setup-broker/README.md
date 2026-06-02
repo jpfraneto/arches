@@ -70,6 +70,27 @@ The browser setup page renders active schema fields as forms that post to the
 same updater model. This keeps the terminal and browser setup surfaces aligned
 with the same server-defined setup session.
 
+## Setup Audit Events
+
+The broker records an in-memory audit trail for each setup session:
+
+```bash
+curl -fsSL http://localhost:3020/api/setup/sessions/SESSION_ID/events
+```
+
+Events are also included in the normal session response and rendered as a
+compact setup log in the browser setup sidebar. Current events include session
+creation, channel refresh, step submission, slug reservation, tunnel
+provisioning, tunnel provisioning failure, and local dev-state mutation.
+
+This mirrors the useful Discourse pattern where wizard updates are logged by the
+server after the step succeeds. The scaffold is intentionally in-memory for now;
+production storage should make these events durable and queryable by session,
+host FID, Arch slug, and domain.
+
+Audit events must not store signer material, mnemonic data, Cloudflare API
+tokens, tunnel tokens, or full generated install commands.
+
 ## Channel Eligibility
 
 The broker has an optional channel eligibility provider. The public refresh

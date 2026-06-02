@@ -125,6 +125,16 @@ bun run src/index.ts
 setup state and stores the generated `tunnel-local` install command. It does not
 mark the appliance as launched or unlock posting.
 
+The setup broker records an in-memory setup audit trail. Read it with:
+
+```bash
+curl -fsSL http://localhost:3020/api/setup/sessions/SESSION_ID/events
+```
+
+This is the first scaffold for Discourse-style setup provenance. It records
+session creation, channel refresh, step submission, slug reservation, and tunnel
+provisioning events without storing tunnel tokens or signer material.
+
 Arches is the seed, not the host identity. Each Arch is held up by the person or
 community running that appliance. Any app/factory Farcaster credential used by
 Arches may only request signer approval during setup; it must not become the FID

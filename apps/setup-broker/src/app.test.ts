@@ -19,6 +19,8 @@ describe("setup broker", () => {
     expect(body.terminal).toContain("Arches setup: setup_");
     expect(body.terminal).toContain("[>] Verify Farcaster");
     expect(body.setupUrl).toStartWith("https://setup.arches.test/setup/setup_");
+    expect(body.events).toHaveLength(1);
+    expect(body.events[0].type).toBe("session_created");
     expect(body.next.verification).toBe("not_implemented");
   });
 
@@ -101,6 +103,9 @@ describe("setup broker", () => {
 
     expect(response.status).toBe(200);
     expect(body.session.currentStepId).toBe("choose-community");
+    expect(body.events.at(-1).type).toBe("channels_refreshed");
+    expect(body.events.at(-1).actorFid).toBe(18350);
+    expect(body.events.at(-1).data.channelCount).toBe(1);
     expect(body.session.steps[2].fields[0].choices).toEqual([
       { id: "anky", label: "/anky", description: "Anky (lead)", data: { role: "lead" } },
     ]);
@@ -189,6 +194,8 @@ describe("setup broker", () => {
 
     expect(response.status).toBe(200);
     expect(body.session.currentStepId).toBe("choose-hosting");
+    expect(body.events.at(-1).type).toBe("slug_reserved");
+    expect(body.events.at(-1).data.domain).toBe("anky.arches.lat");
     expect(body.session.steps[3].fields[0].value).toBe("anky");
     expect(body.session.steps[3].fields[1].value).toBe("anky.arches.lat");
   });
@@ -222,6 +229,8 @@ describe("setup broker", () => {
 
     expect(response.status).toBe(200);
     expect(body.session.currentStepId).toBe("name-surface");
+    expect(body.events.at(-1).type).toBe("step_submitted");
+    expect(body.events.at(-1).data.stepId).toBe("choose-community");
     expect(body.session.steps[2].fields[0].value).toBe("builders");
     expect(body.terminal).toContain("[>] Name Surface");
   });
@@ -253,6 +262,10 @@ describe("setup broker", () => {
 
     expect(response.status).toBe(200);
     expect(body.session.currentStepId).toBe("choose-hosting");
+    expect(body.events.at(-2).type).toBe("step_submitted");
+    expect(body.events.at(-2).data.stepId).toBe("name-surface");
+    expect(body.events.at(-1).type).toBe("slug_reserved");
+    expect(body.events.at(-1).data.domain).toBe("anky.arches.lat");
     expect(body.session.steps[3].fields[0].value).toBe("anky");
     expect(body.session.steps[3].fields[1].value).toBe("anky.arches.lat");
   });
@@ -423,6 +436,8 @@ describe("setup broker", () => {
     expect(html).toContain("<title>Arches Setup</title>");
     expect(html).toContain("Current step");
     expect(html).toContain("Verify Farcaster");
+    expect(html).toContain("Setup Log");
+    expect(html).toContain("session_created");
     expect(html).toContain("Manual admin FID input is not accepted");
     expect(html).not.toContain('name="adminFid"');
   });
@@ -590,6 +605,9 @@ describe("setup broker", () => {
     expect(body.session.steps[6].fields[1].value).toContain("--tunnel-token 'fake-token'");
     expect(body.terminal).toContain("Tunnel route: provisioned");
     expect(body.terminal).toContain("--mode tunnel-local");
+    expect(body.events.at(-1).type).toBe("tunnel_provisioned");
+    expect(body.events.at(-1).data.tunnelId).toBe("tunnel_123");
+    expect(JSON.stringify(body.events)).not.toContain("fake-token");
   });
 
   test("surfaces tunnel provider errors without mutating session progress", async () => {
@@ -616,12 +634,35 @@ describe("setup broker", () => {
     const body = await response.json();
     const sessionResponse = await app.request(`/api/setup/sessions/${created.session.sessionId}`);
     const sessionBody = await sessionResponse.json();
+    const eventsResponse = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/events`,
+    );
+    const eventsBody = await eventsResponse.json();
 
     expect(response.status).toBe(502);
     expect(body.message).toBe("Cloudflare refused the request.");
     expect(sessionBody.session.currentStepId).toBe("launch-appliance");
     expect(sessionBody.session.steps[6].fields[0].value).toBe("waiting");
     expect(sessionBody.session.steps[6].fields[1].value).toBeUndefined();
+    expect(eventsResponse.status).toBe(200);
+    expect(eventsBody.events.at(-1).type).toBe("tunnel_provision_failed");
+    expect(eventsBody.events.at(-1).data.status).toBe(502);
+  });
+
+  test("serves setup audit events for a session", async () => {
+    const app = createSetupBrokerApp();
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/events`,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.events).toHaveLength(1);
+    expect(body.events[0].sessionId).toBe(created.session.sessionId);
+    expect(body.events[0].type).toBe("session_created");
   });
 
   test("keeps dev state mutation disabled by default", async () => {

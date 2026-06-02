@@ -287,13 +287,22 @@ focused browser setup page at `/setup`, renders unclaimed `*.arches.lat`
 hostnames as setup invitations, includes an optional Neynar channel eligibility
 adapter, includes a generic current-step updater for schema-backed browser/API
 submissions, includes the first Cloudflare Tunnel provisioning provider boundary,
-and intentionally returns `501` for Farcaster verification instead of accepting a
+records an in-memory setup audit trail for successful setup actions, and
+intentionally returns `501` for Farcaster verification instead of accepting a
 manual admin FID.
 
 `packages/setup-schema` now contains the first concrete version of this shape:
 renderer-neutral setup steps, fields, choices, completion state, submission
 validation, a terminal renderer, and the product invariant that composer unlock
 remains blocked until Farcaster publishing has been verified.
+
+The broker audit trail is the first Arches equivalent of Discourse's wizard
+history logging. Discourse records completed wizard steps through user history
+and logs setting changes through server-side staff action logging. Arches should
+eventually persist setup events for host verification, channel eligibility, slug
+reservation, tunnel provisioning, appliance launch, publish probes, and composer
+unlock. These events should prove setup provenance without storing signer
+secrets, mnemonic material, API tokens, tunnel tokens, or full install commands.
 
 ## Implementation Phases
 
@@ -310,12 +319,14 @@ remains blocked until Farcaster publishing has been verified.
    in `apps/setup-broker`).
 7. Move Cloudflare Tunnel provisioning behind the broker (provider boundary and
    session endpoint started in `apps/setup-broker`).
-8. Teach `scripts/install.sh` to call the broker when no flags are passed
-   (started with the terminal session handoff).
-9. Add unclaimed-subdomain page and wildcard routing (started in
+8. Add setup audit/provenance events (started as in-memory events in
    `apps/setup-broker`).
-10. Wire Hypersnap Lite publish probe and signer storage.
-11. Enable posting only when the publish contract is confirmed.
+9. Teach `scripts/install.sh` to call the broker when no flags are passed
+   (started with the terminal session handoff).
+10. Add unclaimed-subdomain page and wildcard routing (started in
+   `apps/setup-broker`).
+11. Wire Hypersnap Lite publish probe and signer storage.
+12. Enable posting only when the publish contract is confirmed.
 
 ## Product Principle
 

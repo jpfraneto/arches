@@ -25,8 +25,27 @@ import {
 
 type SessionRecord = {
   state: SetupState;
+  events: SetupAuditEvent[];
   createdAt: string;
   updatedAt: string;
+};
+
+type SetupAuditEventType =
+  | "session_created"
+  | "dev_state_updated"
+  | "channels_refreshed"
+  | "step_submitted"
+  | "slug_reserved"
+  | "tunnel_provisioned"
+  | "tunnel_provision_failed";
+
+type SetupAuditEvent = {
+  id: string;
+  sessionId: string;
+  type: SetupAuditEventType;
+  at: string;
+  actorFid?: number;
+  data?: Record<string, string | number | boolean | undefined>;
 };
 
 type BrokerOptions = {
@@ -40,6 +59,7 @@ type SessionResponse = {
   session: SetupSession;
   terminal: string;
   setupUrl: string;
+  events: SetupAuditEvent[];
   next: {
     verification: "not_implemented";
     message: string;
@@ -86,13 +106,15 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
   app.post("/api/setup/sessions", (c) => {
     const requestedSlug = normalizeSlug(c.req.query("requested"));
     const state = createSetupSession(publicOrigin, requestedSlug);
+    const record = sessions.get(state.sessionId)!;
 
-    return c.json(sessionResponse(state, publicOrigin), 201);
+    return c.json(sessionResponse(record, publicOrigin), 201);
   });
 
   app.post("/api/setup/sessions/terminal", (c) => {
     const state = createSetupSession(publicOrigin);
-    const response = sessionResponse(state, publicOrigin);
+    const record = sessions.get(state.sessionId)!;
+    const response = sessionResponse(record, publicOrigin);
 
     return c.text(`${response.terminal}\n\nBrowser setup: ${response.setupUrl}\n`);
   });
@@ -107,14 +129,21 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     const record = sessions.get(c.req.param("sessionId"));
     if (!record) return c.html(renderMissingSessionHtml(), 404);
 
-    return c.html(renderSetupHtml(buildSetupSession(record.state)));
+    return c.html(renderSetupHtml(buildSetupSession(record.state), record.events));
   });
 
   app.get("/api/setup/sessions/:sessionId", (c) => {
     const record = sessions.get(c.req.param("sessionId"));
     if (!record) return c.json({ error: "setup session not found" }, 404);
 
-    return c.json(sessionResponse(record.state, publicOrigin));
+    return c.json(sessionResponse(record, publicOrigin));
+  });
+
+  app.get("/api/setup/sessions/:sessionId/events", (c) => {
+    const record = sessions.get(c.req.param("sessionId"));
+    if (!record) return c.json({ error: "setup session not found" }, 404);
+
+    return c.json({ events: record.events });
   });
 
   app.get("/api/setup/sessions/:sessionId/terminal", (c) => {
@@ -160,14 +189,19 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
       ...record.state,
       eligibleChannels,
     };
+    const updatedRecord = withSetupEvent(
+      {
+        ...record,
+        state: updatedState,
+        updatedAt: new Date().toISOString(),
+      },
+      "channels_refreshed",
+      { actorFid: hostFid, data: { channelCount: eligibleChannels.length } },
+    );
 
-    sessions.set(sessionId, {
-      ...record,
-      state: updatedState,
-      updatedAt: new Date().toISOString(),
-    });
+    sessions.set(sessionId, updatedRecord);
 
-    return c.json(sessionResponse(updatedState, publicOrigin));
+    return c.json(sessionResponse(updatedRecord, publicOrigin));
   });
 
   app.post("/api/setup/sessions/:sessionId/slug/reserve", async (c) => {
@@ -186,14 +220,22 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
       reservedSlug: result.slug,
       domain: `${result.slug}.arches.lat`,
     };
+    const updatedRecord = withSetupEvent(
+      {
+        ...record,
+        state: updatedState,
+        updatedAt: new Date().toISOString(),
+      },
+      "slug_reserved",
+      {
+        actorFid: updatedState.hostFid,
+        data: { slug: result.slug, domain: updatedState.domain },
+      },
+    );
 
-    sessions.set(sessionId, {
-      ...record,
-      state: updatedState,
-      updatedAt: new Date().toISOString(),
-    });
+    sessions.set(sessionId, updatedRecord);
 
-    return c.json(sessionResponse(updatedState, publicOrigin));
+    return c.json(sessionResponse(updatedRecord, publicOrigin));
   });
 
   app.post("/api/setup/sessions/:sessionId/steps/:stepId", async (c) => {
@@ -209,13 +251,23 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     );
     if (!result.ok) return c.json({ error: result.error, message: result.message }, result.status);
 
-    sessions.set(sessionId, {
-      ...record,
-      state: result.state,
-      updatedAt: new Date().toISOString(),
-    });
+    let updatedRecord = withSetupEvent(
+      {
+        ...record,
+        state: result.state,
+        updatedAt: new Date().toISOString(),
+      },
+      "step_submitted",
+      {
+        actorFid: result.state.hostFid,
+        data: { stepId: c.req.param("stepId") },
+      },
+    );
+    updatedRecord = withStepSideEffectEvents(updatedRecord, record.state, c.req.param("stepId"));
 
-    return c.json(sessionResponse(result.state, publicOrigin));
+    sessions.set(sessionId, updatedRecord);
+
+    return c.json(sessionResponse(updatedRecord, publicOrigin));
   });
 
   app.post("/api/setup/sessions/:sessionId/tunnel/provision", async (c) => {
@@ -248,15 +300,43 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
         composerUnlocked: undefined,
       };
 
-      sessions.set(sessionId, {
-        ...record,
-        state: updatedState,
-        updatedAt: new Date().toISOString(),
-      });
+      const updatedRecord = withSetupEvent(
+        {
+          ...record,
+          state: updatedState,
+          updatedAt: new Date().toISOString(),
+        },
+        "tunnel_provisioned",
+        {
+          actorFid: updatedState.hostFid,
+          data: {
+            slug: updatedState.reservedSlug,
+            domain: updatedState.domain,
+            tunnelId: updatedState.tunnelId,
+          },
+        },
+      );
 
-      return c.json(sessionResponse(updatedState, publicOrigin));
+      sessions.set(sessionId, updatedRecord);
+
+      return c.json(sessionResponse(updatedRecord, publicOrigin));
     } catch (error) {
       if (error instanceof TunnelProvisioningError) {
+        sessions.set(
+          sessionId,
+          withSetupEvent(
+            {
+              ...record,
+              updatedAt: new Date().toISOString(),
+            },
+            "tunnel_provision_failed",
+            {
+              actorFid: record.state.hostFid,
+              data: { status: error.status },
+            },
+          ),
+        );
+
         return c.json(
           { error: "tunnel provisioning failed", message: error.message },
           error.status as 400 | 409 | 500 | 501 | 502,
@@ -286,11 +366,21 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     );
     if (!result.ok) return c.html(renderStepErrorHtml(result.message), result.status);
 
-    sessions.set(sessionId, {
-      ...record,
-      state: result.state,
-      updatedAt: new Date().toISOString(),
-    });
+    let updatedRecord = withSetupEvent(
+      {
+        ...record,
+        state: result.state,
+        updatedAt: new Date().toISOString(),
+      },
+      "step_submitted",
+      {
+        actorFid: result.state.hostFid,
+        data: { stepId: c.req.param("stepId") },
+      },
+    );
+    updatedRecord = withStepSideEffectEvents(updatedRecord, record.state, c.req.param("stepId"));
+
+    sessions.set(sessionId, updatedRecord);
 
     return c.redirect(`/setup/${sessionId}`, 303);
   });
@@ -317,9 +407,13 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
       state: updatedState,
       updatedAt: new Date().toISOString(),
     };
-    sessions.set(sessionId, updatedRecord);
+    const auditedRecord = withSetupEvent(updatedRecord, "dev_state_updated", {
+      actorFid: updatedState.hostFid,
+      data: { devOnly: true },
+    });
+    sessions.set(sessionId, auditedRecord);
 
-    return c.json(sessionResponse(updatedState, publicOrigin));
+    return c.json(sessionResponse(auditedRecord, publicOrigin));
   });
 
   return app;
@@ -341,6 +435,11 @@ function createSetupSession(publicOrigin: string, requestedSlug?: string): Setup
 
   sessions.set(sessionId, {
     state,
+    events: [
+      createSetupEvent(sessionId, "session_created", {
+        data: { requestedSlug },
+      }),
+    ],
     createdAt: now,
     updatedAt: now,
   });
@@ -348,13 +447,15 @@ function createSetupSession(publicOrigin: string, requestedSlug?: string): Setup
   return state;
 }
 
-function sessionResponse(state: SetupState, publicOrigin: string): SessionResponse {
+function sessionResponse(record: SessionRecord, publicOrigin: string): SessionResponse {
+  const state = record.state;
   const session = buildSetupSession(state);
 
   return {
     session,
     terminal: renderTerminalSession(session),
     setupUrl: `${publicOrigin}/setup/${state.sessionId}`,
+    events: record.events,
     next: {
       verification: "not_implemented",
       message:
@@ -365,6 +466,66 @@ function sessionResponse(state: SetupState, publicOrigin: string): SessionRespon
 
 function createSessionId(): string {
   return `setup_${crypto.randomUUID()}`;
+}
+
+function createEventId(): string {
+  return `event_${crypto.randomUUID()}`;
+}
+
+function createSetupEvent(
+  sessionId: string,
+  type: SetupAuditEventType,
+  options: Omit<Partial<SetupAuditEvent>, "id" | "sessionId" | "type" | "at"> = {},
+): SetupAuditEvent {
+  return {
+    id: createEventId(),
+    sessionId,
+    type,
+    at: new Date().toISOString(),
+    actorFid: options.actorFid,
+    data: removeUndefinedData(options.data),
+  };
+}
+
+function withSetupEvent(
+  record: SessionRecord,
+  type: SetupAuditEventType,
+  options: Omit<Partial<SetupAuditEvent>, "id" | "sessionId" | "type" | "at"> = {},
+): SessionRecord {
+  return {
+    ...record,
+    events: [...record.events, createSetupEvent(record.state.sessionId, type, options)],
+  };
+}
+
+function withStepSideEffectEvents(
+  record: SessionRecord,
+  previousState: SetupState,
+  stepId: string,
+): SessionRecord {
+  if (
+    stepId === "name-surface" &&
+    record.state.reservedSlug &&
+    record.state.domain &&
+    record.state.reservedSlug !== previousState.reservedSlug
+  ) {
+    return withSetupEvent(record, "slug_reserved", {
+      actorFid: record.state.hostFid,
+      data: { slug: record.state.reservedSlug, domain: record.state.domain },
+    });
+  }
+
+  return record;
+}
+
+function removeUndefinedData(
+  data: SetupAuditEvent["data"],
+): SetupAuditEvent["data"] {
+  if (!data) return undefined;
+
+  return Object.fromEntries(
+    Object.entries(data).filter(([, value]) => value !== undefined),
+  );
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -812,7 +973,7 @@ function tunnelProvisioningReadiness(state: SetupState): TunnelProvisioningReadi
   return { ok: true };
 }
 
-function renderSetupHtml(session: SetupSession): string {
+function renderSetupHtml(session: SetupSession, events: SetupAuditEvent[]): string {
   const currentStep = session.steps.find((step) => step.id === session.currentStepId);
 
   return `<!doctype html>
@@ -916,6 +1077,33 @@ function renderSetupHtml(session: SetupSession): string {
     .step.active { color: var(--ink); font-weight: 650; }
     .step.active .marker { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
     .step.blocked .marker { border-color: var(--blocked); color: var(--blocked); }
+
+    .events {
+      border-top: 1px solid var(--line);
+      margin-top: 28px;
+      padding-top: 22px;
+    }
+
+    .events h2 {
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+
+    .event-list {
+      list-style: none;
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .event-type {
+      color: var(--ink);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      overflow-wrap: anywhere;
+    }
 
     .surface {
       background: var(--panel);
@@ -1036,6 +1224,7 @@ function renderSetupHtml(session: SetupSession): string {
       <ol class="steps">
         ${session.steps.map(renderProgressStep).join("")}
       </ol>
+      ${renderSetupEvents(events)}
     </aside>
     <section>
       ${currentStep ? renderCurrentStep(session.sessionId, currentStep) : ""}
@@ -1166,6 +1355,50 @@ function renderProgressStep(step: SetupStep): string {
     <span class="marker">${escapeHtml(statusGlyph(step.status))}</span>
     <span>${escapeHtml(step.title)}</span>
   </li>`;
+}
+
+function renderSetupEvents(events: SetupAuditEvent[]): string {
+  const recentEvents = events.slice(-6).reverse();
+
+  return `<div class="events">
+    <h2>Setup Log</h2>
+    <ol class="event-list">
+      ${recentEvents.map(renderSetupEvent).join("")}
+    </ol>
+  </div>`;
+}
+
+function renderSetupEvent(event: SetupAuditEvent): string {
+  const detail = eventDetail(event);
+
+  return `<li>
+    <div class="event-type">${escapeHtml(event.type)}</div>
+    <div>${escapeHtml(detail)}</div>
+  </li>`;
+}
+
+function eventDetail(event: SetupAuditEvent): string {
+  const actor = event.actorFid ? `FID ${event.actorFid}` : "system";
+  const domain = event.data?.domain ? ` ${event.data.domain}` : "";
+  const step = event.data?.stepId ? ` ${event.data.stepId}` : "";
+  const count = event.data?.channelCount !== undefined ? ` ${event.data.channelCount}` : "";
+
+  switch (event.type) {
+    case "session_created":
+      return `${actor} created setup`;
+    case "dev_state_updated":
+      return "dev-only state update";
+    case "channels_refreshed":
+      return `${actor} refreshed${count} channel choices`;
+    case "step_submitted":
+      return `${actor} submitted${step}`;
+    case "slug_reserved":
+      return `${actor} reserved${domain}`;
+    case "tunnel_provisioned":
+      return `${actor} provisioned${domain}`;
+    case "tunnel_provision_failed":
+      return `${actor} tunnel provisioning failed`;
+  }
 }
 
 function renderCurrentStep(sessionId: string, step: SetupStep): string {

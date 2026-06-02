@@ -282,6 +282,7 @@ Implemented scaffolding in this repo:
 - terminal and browser setup rendering
 - generic current-step setup updater for schema-backed fields
 - Cloudflare Tunnel provider boundary and setup-session provisioning endpoint
+- in-memory setup audit events for broker actions
 - unclaimed hostname setup invitation scaffold
 - optional Neynar channel eligibility adapter
 - in-memory eligible-channel slug reservation scaffold
@@ -291,7 +292,7 @@ Not implemented yet:
 - production Farcaster QR verification
 - signer request and signer storage flow
 - production-authenticated Cloudflare Tunnel provisioning behind the broker
-- persistent setup sessions and reservations
+- persistent setup sessions, audit events, and reservations
 - production channel-selection terminal UI
 - Hypersnap Lite publishing contract
 - publish probe and composer unlock
