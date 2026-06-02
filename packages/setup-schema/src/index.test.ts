@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   buildSetupSession,
   findStep,
+  renderTerminalSession,
+  renderTerminalStep,
   serializeStepValues,
   validateStepSubmission,
   type SetupState,
@@ -131,5 +133,61 @@ describe("serializeStepValues", () => {
       slug: "anky",
       domain: "anky.arches.lat",
     });
+  });
+});
+
+describe("terminal rendering", () => {
+  test("renders setup progress and active step choices", () => {
+    const session = buildSetupSession({
+      sessionId: "setup_8",
+      hostFid: 18350,
+      signerApproved: true,
+      eligibleChannels: [
+        { slug: "anky", role: "lead" },
+        { slug: "builders", role: "moderator", name: "Builders" },
+      ],
+    });
+
+    expect(renderTerminalSession(session)).toContain(`Arches setup: setup_8
+Current step: Choose Community
+
+[x] Verify Farcaster
+[x] Prepare Signer
+[>] Choose Community
+[ ] Name Surface`);
+    expect(renderTerminalSession(session)).toContain(`Eligible channels *:
+  Eligibility comes from Farcaster channel state.
+  1. [ ] /anky - lead
+  2. [ ] /builders - Builders (moderator)`);
+  });
+
+  test("can hide pending steps for compact terminal output", () => {
+    const session = buildSetupSession({ sessionId: "setup_9" });
+
+    expect(renderTerminalSession(session, { includePendingSteps: false })).not.toContain(
+      "[ ] Prepare Signer",
+    );
+  });
+
+  test("renders copy fields as multiline copy blocks", () => {
+    const session = buildSetupSession({
+      sessionId: "setup_10",
+      hostFid: 18350,
+      signerApproved: true,
+      eligibleChannels: [{ slug: "anky", role: "lead" }],
+      selectedChannelSlug: "anky",
+      reservedSlug: "anky",
+      domain: "anky.arches.lat",
+      hostingMode: "tunnel-local",
+      surfaceConfigured: true,
+      installCommand: "curl -fsSL https://install.arches.lat | bash",
+    });
+    const step = findStep(session, "launch-appliance");
+
+    expect(step).toBeDefined();
+    expect(renderTerminalStep(step!)).toContain(`Install command: curl -fsSL https://install.arches.lat | bash
+  The explicit fallback command is available if automatic setup cannot continue.
+  Copy:
+  curl -fsSL https://install.arches.lat | bash`);
   });
 });

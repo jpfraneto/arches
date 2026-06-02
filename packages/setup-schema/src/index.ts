@@ -81,6 +81,10 @@ export type ValidationError = {
   message: string;
 };
 
+export type TerminalRenderOptions = {
+  includePendingSteps?: boolean;
+};
+
 const HOSTING_CHOICES: SetupChoice[] = [
   {
     id: "tunnel-local",
@@ -159,6 +163,38 @@ export function serializeStepValues(step: SetupStep): FieldValues {
     if (field.value !== undefined) values[field.id] = field.value;
     return values;
   }, {});
+}
+
+export function renderTerminalSession(
+  session: SetupSession,
+  options: TerminalRenderOptions = {},
+): string {
+  const includePendingSteps = options.includePendingSteps ?? true;
+  const currentStep = findStep(session, session.currentStepId);
+  const lines = [
+    `Arches setup: ${session.sessionId}`,
+    `Current step: ${currentStep?.title ?? session.currentStepId}`,
+    "",
+    ...session.steps
+      .filter((step) => includePendingSteps || step.status !== "pending")
+      .map((step) => `${terminalStatusMarker(step.status)} ${step.title}`),
+  ];
+
+  if (currentStep) {
+    lines.push("", renderTerminalStep(currentStep));
+  }
+
+  return lines.join("\n");
+}
+
+export function renderTerminalStep(step: SetupStep): string {
+  const lines = [`${step.title}`, step.description];
+
+  for (const field of step.fields) {
+    lines.push("", ...renderTerminalField(field));
+  }
+
+  return lines.join("\n");
 }
 
 function verifyFarcasterStep(state: SetupState): SetupStep {
@@ -366,4 +402,48 @@ function unlockArchStep(state: SetupState): SetupStep {
 function statusAfter(prerequisiteMet: boolean, completed: boolean): StepStatus {
   if (completed) return "completed";
   return prerequisiteMet ? "active" : "pending";
+}
+
+function renderTerminalField(field: SetupField): string[] {
+  const label = field.required ? `${field.label} *` : field.label;
+  const lines = [`${label}: ${field.value ?? ""}`.trimEnd()];
+
+  if (field.description) lines.push(`  ${field.description}`);
+
+  if (field.type === "radio" || field.type === "dropdown") {
+    const choices = field.choices ?? [];
+
+    if (choices.length === 0) {
+      lines.push("  No choices available yet.");
+    }
+
+    choices.forEach((choice, index) => {
+      const selected = choice.id === field.value ? "*" : " ";
+      const disabled = choice.disabled ? " (disabled)" : "";
+      const description = choice.description ? ` - ${choice.description}` : "";
+      lines.push(`  ${index + 1}. [${selected}] ${choice.label}${description}${disabled}`);
+    });
+  }
+
+  if (field.type === "copy" && field.value) {
+    lines.push("  Copy:");
+    for (const line of field.value.split("\n")) {
+      lines.push(`  ${line}`);
+    }
+  }
+
+  return lines;
+}
+
+function terminalStatusMarker(status: StepStatus): string {
+  switch (status) {
+    case "completed":
+      return "[x]";
+    case "active":
+      return "[>]";
+    case "blocked":
+      return "[!]";
+    case "pending":
+      return "[ ]";
+  }
 }

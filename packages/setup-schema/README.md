@@ -22,3 +22,28 @@ The schema enforces the Arches setup order:
 
 The composer can only be unlocked after Farcaster publishing is verified. Local
 database writes are never treated as valid Arch feed data.
+
+## Terminal Renderer
+
+The package includes a small terminal renderer so the installer can show the
+same setup state as a future browser wizard:
+
+```ts
+import { buildSetupSession, renderTerminalSession } from "@arches/setup-schema";
+
+const session = buildSetupSession({
+  sessionId: "setup_123",
+  hostFid: 18350,
+  signerApproved: true,
+  eligibleChannels: [{ slug: "anky", role: "lead" }],
+});
+
+console.log(renderTerminalSession(session));
+```
+
+The renderer uses the same step statuses as the schema:
+
+- `[x]`: completed
+- `[>]`: active
+- `[ ]`: pending
+- `[!]`: blocked
