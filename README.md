@@ -103,6 +103,8 @@ signature advances setup to signer preparation.
 The setup broker now has signer approval request/status endpoints behind a
 provider boundary. The default signer provider fails closed, and setup state is
 limited to non-secret request URLs and signer public keys.
+The browser setup page now exposes the same `Prepare Signer` flow with request
+and status buttons, still using the provider boundary and FID-match gate.
 
 The setup broker also renders unclaimed `*.arches.lat` hostnames as creation
 invitations. Visiting an unclaimed Arch should point the host toward Farcaster

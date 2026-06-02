@@ -105,6 +105,18 @@ type StepCompletionEvent = {
   event: SetupAuditEvent;
 };
 
+type SignerActionResult =
+  | {
+      ok: true;
+      record: SessionRecord;
+    }
+  | {
+      ok: false;
+      status: 400 | 401 | 404 | 409 | 501 | 502;
+      error: string;
+      message: string;
+    };
+
 const sessions = new Map<string, SessionRecord>();
 const slugReservations = new Map<string, string>();
 const signerRequestTokens = new Map<string, string>();
@@ -317,18 +329,41 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
 
   app.post("/api/setup/sessions/:sessionId/signer/request", async (c) => {
     const sessionId = c.req.param("sessionId");
+    const result = await createSignerRequestForSession(sessionId);
+    if (!result.ok) return c.json({ error: result.error, message: result.message }, result.status);
+
+    return c.json(sessionResponse(result.record, publicOrigin));
+  });
+
+  app.post("/api/setup/sessions/:sessionId/signer/status", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const result = await pollSignerStatusForSession(sessionId);
+    if (!result.ok) return c.json({ error: result.error, message: result.message }, result.status);
+
+    return c.json(sessionResponse(result.record, publicOrigin));
+  });
+
+  async function createSignerRequestForSession(
+    sessionId: string,
+  ): Promise<SignerActionResult> {
     const record = sessions.get(sessionId);
-    if (!record) return c.json({ error: "setup session not found" }, 404);
+    if (!record) {
+      return {
+        ok: false,
+        status: 404,
+        error: "setup session not found",
+        message: "Setup session not found.",
+      };
+    }
 
     const hostFid = record.state.hostFid;
     if (!hostFid) {
-      return c.json(
-        {
-          error: "farcaster verification required",
-          message: "Signer approval can only start after the setup broker verifies the host FID.",
-        },
-        409,
-      );
+      return {
+        ok: false,
+        status: 409,
+        error: "farcaster verification required",
+        message: "Signer approval can only start after the setup broker verifies the host FID.",
+      };
     }
 
     try {
@@ -356,39 +391,47 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
       signerRequestTokens.set(sessionId, signerRequest.requestToken);
       sessions.set(sessionId, updatedRecord);
 
-      return c.json(sessionResponse(updatedRecord, publicOrigin));
+      return { ok: true, record: updatedRecord };
     } catch (error) {
       if (error instanceof SignerApprovalError) {
-        return c.json(
-          { error: "signer approval request failed", message: error.message },
-          error.status,
-        );
+        return {
+          ok: false,
+          status: error.status,
+          error: "signer approval request failed",
+          message: error.message,
+        };
       }
 
-      return c.json(
-        {
-          error: "signer approval request failed",
-          message: "The setup broker could not create a signer approval request.",
-        },
-        502,
-      );
+      return {
+        ok: false,
+        status: 502,
+        error: "signer approval request failed",
+        message: "The setup broker could not create a signer approval request.",
+      };
     }
-  });
+  }
 
-  app.post("/api/setup/sessions/:sessionId/signer/status", async (c) => {
-    const sessionId = c.req.param("sessionId");
+  async function pollSignerStatusForSession(
+    sessionId: string,
+  ): Promise<SignerActionResult> {
     const record = sessions.get(sessionId);
-    if (!record) return c.json({ error: "setup session not found" }, 404);
+    if (!record) {
+      return {
+        ok: false,
+        status: 404,
+        error: "setup session not found",
+        message: "Setup session not found.",
+      };
+    }
 
     const requestToken = signerRequestTokens.get(sessionId);
     if (!requestToken) {
-      return c.json(
-        {
-          error: "signer request missing",
-          message: "Create a signer approval request before polling signer status.",
-        },
-        409,
-      );
+      return {
+        ok: false,
+        status: 409,
+        error: "signer request missing",
+        message: "Create a signer approval request before polling signer status.",
+      };
     }
 
     try {
@@ -396,24 +439,25 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
       const updatedRecord = applySignerStatus(record, status);
       sessions.set(sessionId, updatedRecord);
 
-      return c.json(sessionResponse(updatedRecord, publicOrigin));
+      return { ok: true, record: updatedRecord };
     } catch (error) {
       if (error instanceof SignerApprovalError) {
-        return c.json(
-          { error: "signer status failed", message: error.message },
-          error.status,
-        );
+        return {
+          ok: false,
+          status: error.status,
+          error: "signer status failed",
+          message: error.message,
+        };
       }
 
-      return c.json(
-        {
-          error: "signer status failed",
-          message: "The setup broker could not poll signer approval status.",
-        },
-        502,
-      );
+      return {
+        ok: false,
+        status: 502,
+        error: "signer status failed",
+        message: "The setup broker could not poll signer approval status.",
+      };
     }
-  });
+  }
 
   app.post("/api/setup/sessions/:sessionId/channels/refresh", async (c) => {
     const sessionId = c.req.param("sessionId");
@@ -632,6 +676,22 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     if (!result.ok) return c.html(renderStepErrorHtml(result.message), result.status);
 
     sessions.set(sessionId, result.record);
+
+    return c.redirect(`/setup/${sessionId}`, 303);
+  });
+
+  app.post("/setup/:sessionId/signer/request", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const result = await createSignerRequestForSession(sessionId);
+    if (!result.ok) return c.html(renderStepErrorHtml(result.message), result.status);
+
+    return c.redirect(`/setup/${sessionId}`, 303);
+  });
+
+  app.post("/setup/:sessionId/signer/status", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const result = await pollSignerStatusForSession(sessionId);
+    if (!result.ok) return c.html(renderStepErrorHtml(result.message), result.status);
 
     return c.redirect(`/setup/${sessionId}`, 303);
   });
@@ -2349,6 +2409,18 @@ async function renderCurrentStep(
 }
 
 function renderStepAction(sessionId: string, step: SetupStep): string {
+  if (step.id === "prepare-signer" && step.status === "active") {
+    const hasSignerRequest = step.fields.some(
+      (field) => field.id === "signerRequest" && field.value,
+    );
+    const action = hasSignerRequest ? "status" : "request";
+    const label = hasSignerRequest ? "Check signer approval" : "Request signer approval";
+
+    return `<form class="actions" method="post" action="/setup/${escapeHtml(sessionId)}/signer/${action}">
+      <button type="submit">${escapeHtml(label)}</button>
+    </form>`;
+  }
+
   if (step.id !== "launch-appliance" || step.status !== "active") return "";
 
   return `<form class="actions" method="post" action="/setup/${escapeHtml(sessionId)}/arch/config">

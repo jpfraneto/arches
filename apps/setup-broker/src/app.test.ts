@@ -385,6 +385,98 @@ describe("setup broker", () => {
     expect(body.message).toContain("does not match the verified host FID");
   });
 
+  test("renders signer approval request action in the browser wizard", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({ hostFid: 18350 }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await app.request(`/setup/${created.session.sessionId}`);
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(html).toContain("Prepare Signer");
+    expect(html).toContain(`action="/setup/${created.session.sessionId}/signer/request"`);
+    expect(html).toContain("Request signer approval");
+  });
+
+  test("requests signer approval from the browser wizard without storing signer secrets", async () => {
+    const app = createSetupBrokerApp({
+      allowDevStateUpdates: true,
+      signerApprovalProvider: signerApprovalProvider({ state: "pending" }),
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({ hostFid: 18350 }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const requestResponse = await app.request(
+      `/setup/${created.session.sessionId}/signer/request`,
+      { method: "POST", redirect: "manual" },
+    );
+    const sessionResponse = await app.request(`/api/setup/sessions/${created.session.sessionId}`);
+    const body = await sessionResponse.json();
+    const pageResponse = await app.request(`/setup/${created.session.sessionId}`);
+    const html = await pageResponse.text();
+
+    expect(requestResponse.status).toBe(303);
+    expect(requestResponse.headers.get("location")).toBe(`/setup/${created.session.sessionId}`);
+    expect(body.session.currentStepId).toBe("prepare-signer");
+    expect(body.session.steps[1].fields[1].value).toBe(
+      "farcaster://signer-request?token=signer_123",
+    );
+    expect(body.events.at(-1).type).toBe("signer_request_created");
+    expect(html).toContain(`action="/setup/${created.session.sessionId}/signer/status"`);
+    expect(html).toContain("Check signer approval");
+    expect(html).toContain("farcaster://signer-request?token=signer_123");
+    expect(JSON.stringify(body)).not.toContain("privateKey");
+    expect(JSON.stringify(body)).not.toContain("signerPrivateKey");
+    expect(JSON.stringify(body)).not.toContain("mnemonic");
+  });
+
+  test("polls signer approval from the browser wizard", async () => {
+    const app = createSetupBrokerApp({
+      allowDevStateUpdates: true,
+      signerApprovalProvider: signerApprovalProvider({
+        state: "approved",
+        fid: 18350,
+        publicKey: "0xsignerpublickey",
+      }),
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({ hostFid: 18350 }),
+      headers: { "content-type": "application/json" },
+    });
+    await app.request(`/setup/${created.session.sessionId}/signer/request`, {
+      method: "POST",
+      redirect: "manual",
+    });
+
+    const statusResponse = await app.request(
+      `/setup/${created.session.sessionId}/signer/status`,
+      { method: "POST", redirect: "manual" },
+    );
+    const sessionResponse = await app.request(`/api/setup/sessions/${created.session.sessionId}`);
+    const body = await sessionResponse.json();
+
+    expect(statusResponse.status).toBe(303);
+    expect(statusResponse.headers.get("location")).toBe(`/setup/${created.session.sessionId}`);
+    expect(body.session.currentStepId).toBe("choose-community");
+    expect(body.session.steps[1].fields[0].value).toBe("approved");
+    expect(body.session.steps[1].completionEventType).toBe("signer_approved");
+    expect(body.events.at(-1).type).toBe("signer_approved");
+  });
+
   test("requires host FID before refreshing eligible channels", async () => {
     const app = createSetupBrokerApp();
     const createResponse = await app.request("/api/setup/sessions", { method: "POST" });

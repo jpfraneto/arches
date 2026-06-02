@@ -301,6 +301,9 @@ a signer request URL, poll signer status, and advance setup only when the
 approved signer FID matches the verified host FID. The current default provider
 fails closed; setup state may store a request URL and signer public key, but
 must not store signer private keys, mnemonic material, or custody secrets.
+The browser wizard now exposes those same request/status actions on the
+`Prepare Signer` step, so the operator can continue setup from the Discourse-like
+UI while still using the broker provider boundary underneath.
 
 `packages/setup-schema` now contains the first concrete version of this shape:
 renderer-neutral setup steps, fields, choices, completion state, submission
@@ -393,7 +396,7 @@ config as the underlying infra.
 14. Add unclaimed-subdomain page and wildcard routing (started in
    `apps/setup-broker`).
 15. Add production signer request provider and appliance-side signer storage
-   (provider boundary started in `apps/setup-broker`).
+   (provider boundary and browser step actions started in `apps/setup-broker`).
 16. Wire Hypersnap Lite publish probe.
 17. Enable posting only when the publish contract is confirmed.
 

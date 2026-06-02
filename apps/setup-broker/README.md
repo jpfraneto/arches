@@ -94,6 +94,12 @@ Only an approved signer for the verified host FID advances setup to channel
 selection. The setup state may store a request URL and signer public key; it must
 not store signer private keys, mnemonic material, or custody secrets.
 
+The browser setup wizard exposes the same flow on the `Prepare Signer` step.
+Before a request exists it renders `Request signer approval`; after the broker
+creates a request URL it renders `Check signer approval`. Both browser actions
+use the same provider boundary as the JSON API and fail closed when signer
+approval is not configured.
+
 ## Step Updates
 
 The broker exposes a Discourse-style generic step updater:
