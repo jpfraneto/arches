@@ -21,6 +21,12 @@ Create a session:
 curl -fsSL -X POST http://localhost:3020/api/setup/sessions
 ```
 
+Start a browser setup session:
+
+```bash
+open http://localhost:3020/setup
+```
+
 Render terminal output:
 
 ```bash

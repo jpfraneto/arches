@@ -3,8 +3,10 @@ import { cors } from "hono/cors";
 import {
   buildSetupSession,
   renderTerminalSession,
+  type SetupField,
   type SetupSession,
   type SetupState,
+  type SetupStep,
 } from "../../../packages/setup-schema/src/index";
 
 type SessionRecord = {
@@ -21,6 +23,7 @@ type BrokerOptions = {
 type SessionResponse = {
   session: SetupSession;
   terminal: string;
+  setupUrl: string;
   next: {
     verification: "not_implemented";
     message: string;
@@ -52,27 +55,28 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
   });
 
   app.post("/api/setup/sessions", (c) => {
-    const sessionId = createSessionId();
-    const now = new Date().toISOString();
-    const state: SetupState = {
-      sessionId,
-      farcasterQrUrl: `${publicOrigin}/api/setup/sessions/${sessionId}/farcaster/verify`,
-    };
+    const state = createSetupSession(publicOrigin);
 
-    sessions.set(sessionId, {
-      state,
-      createdAt: now,
-      updatedAt: now,
-    });
+    return c.json(sessionResponse(state, publicOrigin), 201);
+  });
 
-    return c.json(sessionResponse(state), 201);
+  app.get("/setup", (c) => {
+    const state = createSetupSession(publicOrigin);
+    return c.redirect(`/setup/${state.sessionId}`, 302);
+  });
+
+  app.get("/setup/:sessionId", (c) => {
+    const record = sessions.get(c.req.param("sessionId"));
+    if (!record) return c.html(renderMissingSessionHtml(), 404);
+
+    return c.html(renderSetupHtml(buildSetupSession(record.state)));
   });
 
   app.get("/api/setup/sessions/:sessionId", (c) => {
     const record = sessions.get(c.req.param("sessionId"));
     if (!record) return c.json({ error: "setup session not found" }, 404);
 
-    return c.json(sessionResponse(record.state));
+    return c.json(sessionResponse(record.state, publicOrigin));
   });
 
   app.get("/api/setup/sessions/:sessionId/terminal", (c) => {
@@ -120,7 +124,7 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     };
     sessions.set(sessionId, updatedRecord);
 
-    return c.json(sessionResponse(updatedState));
+    return c.json(sessionResponse(updatedState, publicOrigin));
   });
 
   return app;
@@ -130,12 +134,30 @@ export function resetSetupBrokerSessionsForTests() {
   sessions.clear();
 }
 
-function sessionResponse(state: SetupState): SessionResponse {
+function createSetupSession(publicOrigin: string): SetupState {
+  const sessionId = createSessionId();
+  const now = new Date().toISOString();
+  const state: SetupState = {
+    sessionId,
+    farcasterQrUrl: `${publicOrigin}/api/setup/sessions/${sessionId}/farcaster/verify`,
+  };
+
+  sessions.set(sessionId, {
+    state,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  return state;
+}
+
+function sessionResponse(state: SetupState, publicOrigin: string): SessionResponse {
   const session = buildSetupSession(state);
 
   return {
     session,
     terminal: renderTerminalSession(session),
+    setupUrl: `${publicOrigin}/setup/${state.sessionId}`,
     next: {
       verification: "not_implemented",
       message:
@@ -150,4 +172,343 @@ function createSessionId(): string {
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function renderSetupHtml(session: SetupSession): string {
+  const currentStep = session.steps.find((step) => step.id === session.currentStepId);
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arches Setup</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #161616;
+      --muted: #62666d;
+      --line: #d7d9dd;
+      --bg: #f7f7f4;
+      --panel: #ffffff;
+      --accent: #0f6b5f;
+      --accent-soft: #dff2ec;
+      --warn: #a24c12;
+      --blocked: #8f1d2c;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+    }
+
+    aside {
+      padding: 32px 28px;
+      border-right: 1px solid var(--line);
+      background: #eeeeea;
+    }
+
+    section {
+      padding: 44px;
+      max-width: 880px;
+    }
+
+    h1, h2, p { margin-top: 0; }
+
+    h1 {
+      font-size: 26px;
+      line-height: 1.15;
+      margin-bottom: 8px;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      font-size: 22px;
+      line-height: 1.2;
+      margin-bottom: 10px;
+      letter-spacing: 0;
+    }
+
+    .session {
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+      margin-bottom: 28px;
+    }
+
+    .steps {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      gap: 8px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      align-items: start;
+      gap: 10px;
+      color: var(--muted);
+      min-height: 28px;
+    }
+
+    .marker {
+      width: 26px;
+      height: 26px;
+      border: 1px solid var(--line);
+      display: grid;
+      place-items: center;
+      font-size: 12px;
+      background: var(--panel);
+    }
+
+    .step.completed .marker { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .step.active { color: var(--ink); font-weight: 650; }
+    .step.active .marker { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+    .step.blocked .marker { border-color: var(--blocked); color: var(--blocked); }
+
+    .surface {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 28px;
+    }
+
+    .description {
+      color: var(--muted);
+      max-width: 680px;
+    }
+
+    .fields {
+      display: grid;
+      gap: 18px;
+      margin-top: 28px;
+    }
+
+    label {
+      display: block;
+      font-weight: 650;
+      margin-bottom: 6px;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 11px 12px;
+      font: inherit;
+      background: #fafafa;
+      color: var(--ink);
+    }
+
+    input[readonly] { color: var(--muted); }
+
+    .choice {
+      display: grid;
+      grid-template-columns: 22px 1fr;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      margin-top: 8px;
+    }
+
+    .choice.selected { border-color: var(--accent); background: var(--accent-soft); }
+
+    .choice-title { font-weight: 650; }
+    .choice-desc, .field-desc { color: var(--muted); font-size: 13px; }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 4px 9px;
+      border-radius: 6px;
+      background: #f0f0ed;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 14px;
+      background: #f4f4f1;
+    }
+
+    .notice {
+      margin-top: 28px;
+      padding: 12px 14px;
+      border: 1px solid #ddb889;
+      border-radius: 6px;
+      color: var(--warn);
+      background: #fff7eb;
+    }
+
+    @media (max-width: 720px) {
+      main { grid-template-columns: 1fr; }
+      aside {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+        padding: 24px 20px;
+      }
+      section { padding: 24px 20px; }
+      .surface { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <aside>
+      <h1>Arches Setup</h1>
+      <div class="session">${escapeHtml(session.sessionId)}</div>
+      <div class="session">Current step: ${escapeHtml(currentStep?.title ?? session.currentStepId)}</div>
+      <ol class="steps">
+        ${session.steps.map(renderProgressStep).join("")}
+      </ol>
+    </aside>
+    <section>
+      ${currentStep ? renderCurrentStep(currentStep) : ""}
+      <div class="notice">Farcaster verification is not wired yet. Posting and composer unlock remain blocked.</div>
+    </section>
+  </main>
+</body>
+</html>`;
+}
+
+function renderMissingSessionHtml(): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Setup Session Not Found</title>
+</head>
+<body>
+  <h1>Setup session not found</h1>
+</body>
+</html>`;
+}
+
+function renderProgressStep(step: SetupStep): string {
+  return `<li class="step ${escapeHtml(step.status)}">
+    <span class="marker">${escapeHtml(statusGlyph(step.status))}</span>
+    <span>${escapeHtml(step.title)}</span>
+  </li>`;
+}
+
+function renderCurrentStep(step: SetupStep): string {
+  return `<div class="surface">
+    <h2>${escapeHtml(step.title)}</h2>
+    <p class="description">${escapeHtml(step.description)}</p>
+    <div class="fields">
+      ${step.fields.map(renderField).join("")}
+    </div>
+  </div>`;
+}
+
+function renderField(field: SetupField): string {
+  switch (field.type) {
+    case "radio":
+    case "dropdown":
+      return renderChoiceField(field);
+    case "status":
+    case "qr":
+      return renderStatusField(field);
+    case "copy":
+      return renderCopyField(field);
+    case "text":
+      return renderTextField(field);
+  }
+}
+
+function renderChoiceField(field: SetupField): string {
+  const choices = field.choices ?? [];
+
+  return `<div>
+    <label>${escapeHtml(requiredLabel(field))}</label>
+    ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ""}
+    ${
+      choices.length > 0
+        ? choices
+            .map((choice) => {
+              const selected = choice.id === field.value;
+              return `<div class="choice${selected ? " selected" : ""}">
+                <input type="radio" disabled${selected ? " checked" : ""}>
+                <div>
+                  <div class="choice-title">${escapeHtml(choice.label)}</div>
+                  ${choice.description ? `<div class="choice-desc">${escapeHtml(choice.description)}</div>` : ""}
+                </div>
+              </div>`;
+            })
+            .join("")
+        : `<div class="field-desc">No choices available yet.</div>`
+    }
+  </div>`;
+}
+
+function renderStatusField(field: SetupField): string {
+  return `<div>
+    <label>${escapeHtml(requiredLabel(field))}</label>
+    <span class="status">${escapeHtml(field.value ?? "waiting")}</span>
+    ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ""}
+  </div>`;
+}
+
+function renderCopyField(field: SetupField): string {
+  return `<div>
+    <label>${escapeHtml(requiredLabel(field))}</label>
+    ${field.value ? `<pre>${escapeHtml(field.value)}</pre>` : `<div class="field-desc">No command available yet.</div>`}
+    ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ""}
+  </div>`;
+}
+
+function renderTextField(field: SetupField): string {
+  return `<div>
+    <label for="${escapeHtml(field.id)}">${escapeHtml(requiredLabel(field))}</label>
+    <input id="${escapeHtml(field.id)}" type="text" value="${escapeHtml(field.value ?? "")}" placeholder="${escapeHtml(
+      field.placeholder ?? "",
+    )}" readonly>
+    ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ""}
+  </div>`;
+}
+
+function requiredLabel(field: SetupField): string {
+  return field.required ? `${field.label} *` : field.label;
+}
+
+function statusGlyph(status: SetupStep["status"]): string {
+  switch (status) {
+    case "completed":
+      return "x";
+    case "active":
+      return ">";
+    case "blocked":
+      return "!";
+    case "pending":
+      return "";
+  }
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }

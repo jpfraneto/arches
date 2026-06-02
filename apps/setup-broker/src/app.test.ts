@@ -17,6 +17,7 @@ describe("setup broker", () => {
     expect(body.session.completed).toBe(false);
     expect(body.terminal).toContain("Arches setup: setup_");
     expect(body.terminal).toContain("[>] Verify Farcaster");
+    expect(body.setupUrl).toStartWith("https://setup.arches.test/setup/setup_");
     expect(body.next.verification).toBe("not_implemented");
   });
 
@@ -47,6 +48,51 @@ describe("setup broker", () => {
 
     expect(response.status).toBe(501);
     expect(body.message).toContain("Manual admin FID input is rejected.");
+  });
+
+  test("redirects browser setup entry to a new session page", async () => {
+    const app = createSetupBrokerApp();
+    const response = await app.request("/setup", { redirect: "manual" });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toStartWith("/setup/setup_");
+  });
+
+  test("renders browser setup page without admin FID input", async () => {
+    const app = createSetupBrokerApp();
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    const response = await app.request(`/setup/${created.session.sessionId}`);
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(html).toContain("<title>Arches Setup</title>");
+    expect(html).toContain("Current step");
+    expect(html).toContain("Verify Farcaster");
+    expect(html).toContain("Manual admin FID input is not accepted");
+    expect(html).not.toContain('name="adminFid"');
+  });
+
+  test("renders eligible channel choices in browser setup page", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({
+        hostFid: 18350,
+        signerApproved: true,
+        eligibleChannels: [{ slug: "anky", role: "lead" }],
+      }),
+      headers: { "content-type": "application/json" },
+    });
+    const response = await app.request(`/setup/${created.session.sessionId}`);
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(html).toContain("Choose Community");
+    expect(html).toContain("/anky");
+    expect(html).toContain("lead");
   });
 
   test("keeps dev state mutation disabled by default", async () => {

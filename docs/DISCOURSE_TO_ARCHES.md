@@ -282,9 +282,9 @@ site/
 The broker is allowed to coordinate. It is not allowed to own every Arch.
 
 `apps/setup-broker` now contains the first in-memory session API for this model.
-It creates setup sessions, serves schema JSON, serves terminal output, and
-intentionally returns `501` for Farcaster verification instead of accepting a
-manual admin FID.
+It creates setup sessions, serves schema JSON, serves terminal output, serves a
+focused browser setup page at `/setup`, and intentionally returns `501` for
+Farcaster verification instead of accepting a manual admin FID.
 
 `packages/setup-schema` now contains the first concrete version of this shape:
 renderer-neutral setup steps, fields, choices, completion state, submission
