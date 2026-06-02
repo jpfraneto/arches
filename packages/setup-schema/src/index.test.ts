@@ -292,6 +292,33 @@ Current step: Choose Community
   2. [ ] /builders - Builders (moderator)`);
   });
 
+  test("renders completed step provenance when present", () => {
+    const session = buildSetupSession({
+      sessionId: "setup_provenance",
+      hostFid: 18350,
+      signerApproved: true,
+      eligibleChannels: [{ slug: "anky", role: "lead" }],
+    });
+    const annotatedSession = {
+      ...session,
+      steps: session.steps.map((step) =>
+        step.id === "verify-farcaster"
+          ? {
+              ...step,
+              completedAt: "2026-06-02T13:00:00.000Z",
+              completedByFid: 18350,
+              completionEventId: "event_123",
+              completionEventType: "farcaster_verified",
+            }
+          : step,
+      ),
+    };
+
+    expect(renderTerminalSession(annotatedSession)).toContain(
+      "[x] Verify Farcaster (farcaster_verified at 2026-06-02T13:00:00.000Z)",
+    );
+  });
+
   test("can hide pending steps for compact terminal output", () => {
     const session = buildSetupSession({ sessionId: "setup_9" });
 

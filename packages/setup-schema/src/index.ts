@@ -48,6 +48,10 @@ export type SetupStep = {
   previousStepId?: SetupStepId;
   nextStepId?: SetupStepId;
   icon?: string;
+  completedAt?: string;
+  completedByFid?: number;
+  completionEventId?: string;
+  completionEventType?: string;
   fields: SetupField[];
 };
 
@@ -307,7 +311,7 @@ export function renderTerminalSession(
     "",
     ...session.steps
       .filter((step) => includePendingSteps || step.status !== "pending")
-      .map((step) => `${terminalStatusMarker(step.status)} ${step.title}`),
+      .map(renderTerminalStepLine),
   ];
 
   if (currentStep) {
@@ -315,6 +319,14 @@ export function renderTerminalSession(
   }
 
   return lines.join("\n");
+}
+
+function renderTerminalStepLine(step: SetupStep): string {
+  const provenance =
+    step.completedAt && step.completionEventType
+      ? ` (${step.completionEventType} at ${step.completedAt})`
+      : "";
+  return `${terminalStatusMarker(step.status)} ${step.title}${provenance}`;
 }
 
 export function renderTerminalStep(step: SetupStep): string {

@@ -321,6 +321,10 @@ eventually persist setup events for host verification, channel eligibility, slug
 reservation, tunnel provisioning, appliance launch, publish probes, and composer
 unlock. These events should prove setup provenance without storing signer
 secrets, mnemonic material, API tokens, tunnel tokens, or full install commands.
+The broker now derives completed-step provenance from those audit events and
+attaches `completedAt`, `completedByFid`, `completionEventId`, and
+`completionEventType` to completed setup steps. The browser sidebar and terminal
+rendering can show that proof directly next to the step.
 
 The broker also exports the first Arch config snapshot. This is the Arches
 equivalent of Discourse applying wizard fields into `SiteSetting`: verified
@@ -369,7 +373,8 @@ config as the underlying infra.
 7. Move Cloudflare Tunnel provisioning behind the broker (provider boundary and
    session endpoint started in `apps/setup-broker`).
 8. Add setup audit/provenance events (started as in-memory events in
-   `apps/setup-broker`).
+   `apps/setup-broker`; completed-step provenance now derived into session
+   schema).
 9. Add Arch config export from setup state and browser launch-step review
    (started in `apps/setup-broker`).
 10. Add community surface/grammar/theme presets (started in

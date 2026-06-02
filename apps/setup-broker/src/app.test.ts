@@ -548,8 +548,13 @@ describe("setup broker", () => {
     expect(body.session.currentStepId).toBe("name-surface");
     expect(body.events.at(-1).type).toBe("step_submitted");
     expect(body.events.at(-1).data.stepId).toBe("choose-community");
+    expect(body.session.steps[2].completedAt).toBe(body.events.at(-1).at);
+    expect(body.session.steps[2].completedByFid).toBe(18350);
+    expect(body.session.steps[2].completionEventId).toBe(body.events.at(-1).id);
+    expect(body.session.steps[2].completionEventType).toBe("step_submitted");
     expect(body.session.steps[2].fields[0].value).toBe("builders");
     expect(body.terminal).toContain("[>] Name Surface");
+    expect(body.terminal).toContain("[x] Choose Community (step_submitted at");
   });
 
   test("reserves the selected channel slug through the generic step updater", async () => {
@@ -832,10 +837,14 @@ describe("setup broker", () => {
     );
     const sessionResponse = await app.request(`/api/setup/sessions/${created.session.sessionId}`);
     const body = await sessionResponse.json();
+    const pageResponse = await app.request(`/setup/${created.session.sessionId}`);
+    const html = await pageResponse.text();
 
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(`/setup/${created.session.sessionId}`);
     expect(body.session.currentStepId).toBe("name-surface");
+    expect(pageResponse.status).toBe(200);
+    expect(html).toContain("step_submitted by FID 18350 at");
   });
 
   test("renders browser step validation errors inline", async () => {

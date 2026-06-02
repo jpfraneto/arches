@@ -148,6 +148,11 @@ session creation, Farcaster verification, signer request/approval, channel
 refresh, step submission, slug reservation, and tunnel provisioning events
 without storing tunnel tokens or private signer material.
 
+Completed setup steps now carry derived provenance in the session schema:
+`completedAt`, `completedByFid`, `completionEventId`, and
+`completionEventType`. The browser sidebar and terminal output render that proof
+next to completed steps when it is available.
+
 The setup broker can also export the server-derived Arch config snapshot:
 
 ```bash

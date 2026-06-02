@@ -147,6 +147,12 @@ server after the step succeeds. The scaffold is intentionally in-memory for now;
 production storage should make these events durable and queryable by session,
 host FID, Arch slug, and domain.
 
+The broker now also derives step provenance from those events. Completed steps
+in the session schema can include `completedAt`, `completedByFid`,
+`completionEventId`, and `completionEventType`, and the browser sidebar renders
+that proof under the completed step. This keeps setup progress tied to audited
+server actions rather than only local form state.
+
 Audit events must not store private signer material, mnemonic data, Cloudflare
 API tokens, tunnel tokens, or full generated install commands.
 

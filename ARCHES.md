@@ -290,6 +290,7 @@ Implemented scaffolding in this repo:
 - signer approval provider boundary and setup-session polling scaffold
 - Cloudflare Tunnel provider boundary and setup-session provisioning endpoint
 - in-memory setup audit events for broker actions
+- derived completed-step provenance in setup responses
 - non-secret Arch config snapshot export from setup state
 - browser launch-step review for exported non-secret Arch config env
 - server-defined surface, grammar, and theme presets for Arch setup

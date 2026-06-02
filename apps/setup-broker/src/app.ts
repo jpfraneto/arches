@@ -100,6 +100,11 @@ type SessionResponse = {
   };
 };
 
+type StepCompletionEvent = {
+  stepId: SetupStepId;
+  event: SetupAuditEvent;
+};
+
 const sessions = new Map<string, SessionRecord>();
 const slugReservations = new Map<string, string>();
 const signerRequestTokens = new Map<string, string>();
@@ -179,7 +184,9 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     const record = sessions.get(c.req.param("sessionId"));
     if (!record) return c.html(renderMissingSessionHtml(), 404);
 
-    return c.html(await renderSetupHtml(buildSetupSession(record.state), record.events));
+    return c.html(
+      await renderSetupHtml(setupSessionWithProvenance(record), record.events),
+    );
   });
 
   app.get("/api/setup/sessions/:sessionId", (c) => {
@@ -612,7 +619,7 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
       config: result.config,
       env: result.env,
       events: result.record.events,
-      session: buildSetupSession(result.record.state),
+      session: setupSessionWithProvenance(result.record),
     });
   });
 
@@ -643,7 +650,7 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     if (!result.ok) {
       if (result.validationErrors?.length) {
         const session = withFieldErrors(
-          buildSetupSession(record.state),
+          setupSessionWithProvenance(record),
           result.validationErrors,
         );
         return c.html(await renderSetupHtml(session, record.events), result.status);
@@ -769,7 +776,7 @@ async function createSetupSession(
 
 function sessionResponse(record: SessionRecord, publicOrigin: string): SessionResponse {
   const state = record.state;
-  const session = buildSetupSession(state);
+  const session = setupSessionWithProvenance(record);
   const verificationUrl = `${publicOrigin}/api/setup/sessions/${state.sessionId}/farcaster/verify`;
 
   return {
@@ -788,6 +795,74 @@ function sessionResponse(record: SessionRecord, publicOrigin: string): SessionRe
         : "Verify a Sign In with Farcaster signature. Manual admin FID input is rejected.",
     },
   };
+}
+
+function setupSessionWithProvenance(record: SessionRecord): SetupSession {
+  return annotateStepProvenance(buildSetupSession(record.state), record.events);
+}
+
+function annotateStepProvenance(
+  session: SetupSession,
+  events: SetupAuditEvent[],
+): SetupSession {
+  const completionByStep = new Map<SetupStepId, SetupAuditEvent>();
+
+  for (const completion of stepCompletionEvents(events)) {
+    completionByStep.set(completion.stepId, completion.event);
+  }
+
+  return {
+    ...session,
+    steps: session.steps.map((step) => {
+      const event = completionByStep.get(step.id);
+      if (!event || step.status !== "completed") return step;
+
+      return {
+        ...step,
+        completedAt: event.at,
+        completedByFid: event.actorFid,
+        completionEventId: event.id,
+        completionEventType: event.type,
+      };
+    }),
+  };
+}
+
+function stepCompletionEvents(events: SetupAuditEvent[]): StepCompletionEvent[] {
+  return events.flatMap((event): StepCompletionEvent[] => {
+    const stepId = stepIdForCompletionEvent(event);
+    return stepId ? [{ stepId, event }] : [];
+  });
+}
+
+function stepIdForCompletionEvent(event: SetupAuditEvent): SetupStepId | undefined {
+  switch (event.type) {
+    case "farcaster_verified":
+      return "verify-farcaster";
+    case "signer_approved":
+      return "prepare-signer";
+    case "step_submitted":
+      return isSetupStepId(event.data?.stepId) ? event.data.stepId : undefined;
+    case "arch_config_exported":
+    case "tunnel_provisioned":
+      return "launch-appliance";
+    default:
+      return undefined;
+  }
+}
+
+function isSetupStepId(value: unknown): value is SetupStepId {
+  return (
+    value === "verify-farcaster" ||
+    value === "prepare-signer" ||
+    value === "choose-community" ||
+    value === "name-surface" ||
+    value === "choose-hosting" ||
+    value === "configure-surface" ||
+    value === "launch-appliance" ||
+    value === "verify-publishing" ||
+    value === "unlock-arch"
+  );
 }
 
 function createSessionId(): string {
@@ -1758,6 +1833,13 @@ async function renderSetupHtml(
       text-transform: uppercase;
     }
 
+    .step-proof {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 500;
+      overflow-wrap: anywhere;
+    }
+
     .events {
       border-top: 1px solid var(--line);
       margin-top: 28px;
@@ -2131,8 +2213,16 @@ function renderProgressStep(step: SetupStep): string {
     <span class="step-title">
       <span>${escapeHtml(step.title)}</span>
       <span class="step-meta">${escapeHtml(step.icon ?? step.id)}</span>
+      ${renderStepProof(step)}
     </span>
   </li>`;
+}
+
+function renderStepProof(step: SetupStep): string {
+  if (!step.completedAt || !step.completionEventType) return "";
+
+  const actor = step.completedByFid ? ` by FID ${step.completedByFid}` : "";
+  return `<span class="step-proof">${escapeHtml(step.completionEventType)}${escapeHtml(actor)} at ${escapeHtml(step.completedAt)}</span>`;
 }
 
 function renderSetupEvents(events: SetupAuditEvent[]): string {
