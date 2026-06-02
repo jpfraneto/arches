@@ -43,6 +43,7 @@ describe("arch config snapshot", () => {
         grammarPreset: "curated-updates",
         themePreset: "high-contrast",
         hostFid: 18350,
+        signerPublicKey: "0xsignerpublickey",
         supportEmail: "support@arches.lat",
       },
       hosting: {
@@ -60,6 +61,7 @@ describe("arch config snapshot", () => {
         ARCHES_MODE: "tunnel-local",
         ARCH_ADMIN_FID: "18350",
         ARCH_SUPPORT_EMAIL: "support@arches.lat",
+        ARCH_SIGNER_PUBLIC_KEY: "0xsignerpublickey",
         ARCH_SURFACE_PRESET: "bulletin",
         ARCH_GRAMMAR_PRESET: "curated-updates",
         ARCH_THEME_PRESET: "high-contrast",
@@ -89,6 +91,7 @@ function readyState(): SetupState {
     sessionId: "setup_ready",
     hostFid: 18350,
     signerApproved: true,
+    signerPublicKey: "0xsignerpublickey",
     eligibleChannels: [{ slug: "anky", role: "lead" }],
     selectedChannelSlug: "anky",
     reservedSlug: "anky",

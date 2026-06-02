@@ -35,6 +35,37 @@ describe("buildSetupSession", () => {
     );
   });
 
+  test("renders signer approval URL without signer secrets", () => {
+    const session = buildSetupSession({
+      sessionId: "setup_signer",
+      hostFid: 18350,
+      signerRequestUrl: "farcaster://signer-request?token=signer_123",
+      signerStatus: "waiting",
+    });
+    const step = findStep(session, "prepare-signer");
+
+    expect(session.currentStepId).toBe("prepare-signer");
+    expect(step?.fields.map((field) => field.id)).toEqual(["signer", "signerRequest"]);
+    expect(step?.fields[1].value).toBe("farcaster://signer-request?token=signer_123");
+    expect(JSON.stringify(step)).not.toContain("privateKey");
+    expect(JSON.stringify(step)).not.toContain("mnemonic");
+  });
+
+  test("renders approved signer public key metadata", () => {
+    const session = buildSetupSession({
+      sessionId: "setup_signer_approved",
+      hostFid: 18350,
+      signerApproved: true,
+      signerPublicKey: "0xsignerpublickey",
+    });
+    const step = findStep(session, "prepare-signer");
+
+    expect(session.currentStepId).toBe("choose-community");
+    expect(step?.status).toBe("completed");
+    expect(step?.fields[0].value).toBe("approved");
+    expect(step?.fields[0].description).toContain("0xsignerpublickey");
+  });
+
   test("renders eligible channels as radio choices after signer approval", () => {
     const session = buildSetupSession({
       sessionId: "setup_2",

@@ -11,7 +11,8 @@ can render the same steps later.
 The schema enforces the Arches setup order:
 
 1. Verify Farcaster.
-2. Prepare an Arch signer.
+2. Prepare an Arch signer. The schema may show a signer approval URL and public
+   key metadata, but never private signer material.
 3. Choose an eligible Farcaster channel.
 4. Reserve the Arch hostname.
 5. Choose hosting.

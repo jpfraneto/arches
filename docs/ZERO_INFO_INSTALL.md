@@ -173,6 +173,12 @@ Farcaster auth client when `ARCHES_FARCASTER_VERIFIER=auth-client`, including
 auth relay channel creation, inline QR rendering, and browser status polling;
 the default verifier still fails closed with `501`.
 
+It also has the first signer approval provider boundary. The broker can create
+a signer request URL and poll signer status, but the default signer provider
+fails closed. Signer private keys and mnemonic material must stay out of the
+broker; approved setup state may only carry non-secret signer metadata such as a
+public key.
+
 ## Broker Provisioning Scaffold
 
 `apps/setup-broker` now has the first Cloudflare Tunnel provider boundary. It
@@ -219,8 +225,9 @@ The config includes the first community-surface presets:
 ARCH_SURFACE_PRESET=village
 ARCH_GRAMMAR_PRESET=open-casts
 ARCH_THEME_PRESET=daylight
+ARCH_SIGNER_PUBLIC_KEY=0x...
 ```
 
 For `tunnel-local`, this export requires the Cloudflare Tunnel route to be
-provisioned. It does not include tunnel tokens, signer material, mnemonic
+provisioned. It does not include tunnel tokens, private signer material, mnemonic
 material, or API tokens.

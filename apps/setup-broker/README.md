@@ -73,6 +73,27 @@ If the channel is pending, the setup session remains on `verify-farcaster`. If
 the channel is completed, the broker verifies the returned SIWF message and
 signature before deriving the host FID.
 
+## Signer Approval
+
+The broker has a signer approval provider boundary. The default provider fails
+closed with `501`; it does not mint, store, or accept signer private keys.
+
+Create a signer approval request after Farcaster verification:
+
+```bash
+curl -fsSL -X POST http://localhost:3020/api/setup/sessions/SESSION_ID/signer/request
+```
+
+Poll signer approval:
+
+```bash
+curl -fsSL -X POST http://localhost:3020/api/setup/sessions/SESSION_ID/signer/status
+```
+
+Only an approved signer for the verified host FID advances setup to channel
+selection. The setup state may store a request URL and signer public key; it must
+not store signer private keys, mnemonic material, or custody secrets.
+
 ## Step Updates
 
 The broker exposes a Discourse-style generic step updater:
@@ -117,8 +138,8 @@ server after the step succeeds. The scaffold is intentionally in-memory for now;
 production storage should make these events durable and queryable by session,
 host FID, Arch slug, and domain.
 
-Audit events must not store signer material, mnemonic data, Cloudflare API
-tokens, tunnel tokens, or full generated install commands.
+Audit events must not store private signer material, mnemonic data, Cloudflare
+API tokens, tunnel tokens, or full generated install commands.
 
 ## Arch Config Export
 
@@ -138,6 +159,7 @@ ARCH_DOMAIN=anky.arches.lat
 ARCHES_MODE=tunnel-local
 ARCH_ADMIN_FID=18350
 ARCH_SUPPORT_EMAIL=support@arches.lat
+ARCH_SIGNER_PUBLIC_KEY=0x...
 ARCH_SURFACE_PRESET=village
 ARCH_GRAMMAR_PRESET=open-casts
 ARCH_THEME_PRESET=daylight
@@ -149,9 +171,9 @@ CLOUDFLARE_TUNNEL_ID=tunnel_123
 ```
 
 For `tunnel-local`, export is gated on tunnel provisioning. The snapshot does
-not include the Cloudflare Tunnel token, signer material, mnemonic material, or
-private API tokens. The installer command remains the delivery path for the
-tunnel token until a safer installer handoff is implemented.
+not include the Cloudflare Tunnel token, private signer material, mnemonic
+material, or private API tokens. The installer command remains the delivery path
+for the tunnel token until a safer installer handoff is implemented.
 
 The configure step follows the Discourse category-setup idea of choosing the
 kind of space first. Arches currently exposes server-defined choices for surface

@@ -21,6 +21,7 @@ export type ArchConfigSnapshot = {
     grammarPreset: GrammarPreset;
     themePreset: ThemePreset;
     hostFid: number;
+    signerPublicKey?: string;
     supportEmail: string;
   };
   hosting: {
@@ -118,6 +119,7 @@ export function buildArchConfigSnapshot(state: SetupState): ArchConfigResult {
     ARCHES_FARCASTER_PUBLISHING_STATUS: "not_implemented",
   };
 
+  if (state.signerPublicKey) env.ARCH_SIGNER_PUBLIC_KEY = state.signerPublicKey;
   if (state.tunnelId) env.CLOUDFLARE_TUNNEL_ID = state.tunnelId;
 
   return {
@@ -134,6 +136,7 @@ export function buildArchConfigSnapshot(state: SetupState): ArchConfigResult {
         grammarPreset,
         themePreset,
         hostFid: state.hostFid,
+        signerPublicKey: state.signerPublicKey,
         supportEmail,
       },
       hosting: {

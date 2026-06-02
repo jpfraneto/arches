@@ -19,6 +19,12 @@ import {
   type FarcasterSignInChannelStatus,
 } from "./farcaster-verification";
 import {
+  SignerApprovalError,
+  createSignerApprovalProvider,
+  type SignerApprovalProvider,
+  type SignerStatus,
+} from "./signer-approval";
+import {
   buildSetupSession,
   findStep,
   renderTerminalSession,
@@ -47,6 +53,8 @@ type SetupAuditEventType =
   | "dev_state_updated"
   | "farcaster_channel_created"
   | "farcaster_verified"
+  | "signer_request_created"
+  | "signer_approved"
   | "channels_refreshed"
   | "step_submitted"
   | "slug_reserved"
@@ -68,6 +76,7 @@ type BrokerOptions = {
   channelEligibilityProvider?: ChannelEligibilityProvider;
   tunnelProvisioningProvider?: TunnelProvisioningProvider;
   farcasterVerificationProvider?: FarcasterVerificationProvider;
+  signerApprovalProvider?: SignerApprovalProvider;
   publicOrigin?: string;
 };
 
@@ -88,6 +97,7 @@ type SessionResponse = {
 
 const sessions = new Map<string, SessionRecord>();
 const slugReservations = new Map<string, string>();
+const signerRequestTokens = new Map<string, string>();
 const RESERVED_ARCHES_SUBDOMAINS = new Set(["install", "setup", "www"]);
 
 export function createSetupBrokerApp(options: BrokerOptions = {}) {
@@ -100,6 +110,7 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     options.tunnelProvisioningProvider ?? createTunnelProvisioningProvider({});
   const farcasterVerificationProvider =
     options.farcasterVerificationProvider ?? createFarcasterVerificationProvider({});
+  const signerApprovalProvider = options.signerApprovalProvider ?? createSignerApprovalProvider();
 
   app.use(
     "*",
@@ -221,6 +232,7 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
           },
         },
       );
+      signerRequestTokens.delete(sessionId);
       sessions.set(sessionId, updatedRecord);
 
       return c.json(sessionResponse(updatedRecord, publicOrigin));
@@ -267,6 +279,9 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
         farcasterVerificationProvider,
         publicOrigin,
       );
+      if (updatedRecord.state.hostFid && updatedRecord.state.hostFid !== record.state.hostFid) {
+        signerRequestTokens.delete(sessionId);
+      }
       sessions.set(sessionId, updatedRecord);
 
       return c.json(sessionResponse(updatedRecord, publicOrigin));
@@ -282,6 +297,106 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
         {
           error: "farcaster auth status failed",
           message: "The setup broker could not poll the Farcaster auth channel.",
+        },
+        502,
+      );
+    }
+  });
+
+  app.post("/api/setup/sessions/:sessionId/signer/request", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const record = sessions.get(sessionId);
+    if (!record) return c.json({ error: "setup session not found" }, 404);
+
+    const hostFid = record.state.hostFid;
+    if (!hostFid) {
+      return c.json(
+        {
+          error: "farcaster verification required",
+          message: "Signer approval can only start after the setup broker verifies the host FID.",
+        },
+        409,
+      );
+    }
+
+    try {
+      const signerRequest = await signerApprovalProvider.createSignerRequest({
+        sessionId,
+        hostFid,
+      });
+      const updatedRecord = withSetupEvent(
+        {
+          ...record,
+          state: {
+            ...record.state,
+            signerRequestUrl: signerRequest.url,
+            signerStatus: "waiting",
+            signerApproved: undefined,
+          },
+          updatedAt: new Date().toISOString(),
+        },
+        "signer_request_created",
+        {
+          actorFid: hostFid,
+          data: { configured: true },
+        },
+      );
+      signerRequestTokens.set(sessionId, signerRequest.requestToken);
+      sessions.set(sessionId, updatedRecord);
+
+      return c.json(sessionResponse(updatedRecord, publicOrigin));
+    } catch (error) {
+      if (error instanceof SignerApprovalError) {
+        return c.json(
+          { error: "signer approval request failed", message: error.message },
+          error.status,
+        );
+      }
+
+      return c.json(
+        {
+          error: "signer approval request failed",
+          message: "The setup broker could not create a signer approval request.",
+        },
+        502,
+      );
+    }
+  });
+
+  app.post("/api/setup/sessions/:sessionId/signer/status", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const record = sessions.get(sessionId);
+    if (!record) return c.json({ error: "setup session not found" }, 404);
+
+    const requestToken = signerRequestTokens.get(sessionId);
+    if (!requestToken) {
+      return c.json(
+        {
+          error: "signer request missing",
+          message: "Create a signer approval request before polling signer status.",
+        },
+        409,
+      );
+    }
+
+    try {
+      const status = await signerApprovalProvider.getSignerStatus(requestToken);
+      const updatedRecord = applySignerStatus(record, status);
+      sessions.set(sessionId, updatedRecord);
+
+      return c.json(sessionResponse(updatedRecord, publicOrigin));
+    } catch (error) {
+      if (error instanceof SignerApprovalError) {
+        return c.json(
+          { error: "signer status failed", message: error.message },
+          error.status,
+        );
+      }
+
+      return c.json(
+        {
+          error: "signer status failed",
+          message: "The setup broker could not poll signer approval status.",
         },
         502,
       );
@@ -578,6 +693,7 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
 export function resetSetupBrokerSessionsForTests() {
   sessions.clear();
   slugReservations.clear();
+  signerRequestTokens.clear();
 }
 
 async function createSetupSession(
@@ -786,6 +902,59 @@ async function applyFarcasterChannelStatus(
   );
 }
 
+function applySignerStatus(record: SessionRecord, status: SignerStatus): SessionRecord {
+  if (status.state === "pending") {
+    return {
+      ...record,
+      state: {
+        ...record.state,
+        signerStatus: "waiting",
+      },
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  if (status.fid !== record.state.hostFid) {
+    throw new SignerApprovalError(
+      "Approved signer FID does not match the verified host FID.",
+      409,
+    );
+  }
+
+  const updatedRecord = {
+    ...record,
+    state: {
+      ...record.state,
+      signerApproved: true,
+      signerStatus: "approved" as const,
+      signerPublicKey: status.publicKey,
+      eligibleChannels: undefined,
+      selectedChannelSlug: undefined,
+      reservedSlug: undefined,
+      domain: undefined,
+      hostingMode: undefined,
+      surfacePreset: undefined,
+      grammarPreset: undefined,
+      themePreset: undefined,
+      surfaceTitle: undefined,
+      provenanceLabel: undefined,
+      surfaceConfigured: undefined,
+      tunnelId: undefined,
+      tunnelProvisioned: undefined,
+      applianceLaunched: undefined,
+      installCommand: undefined,
+      publishingVerified: undefined,
+      composerUnlocked: undefined,
+    },
+    updatedAt: new Date().toISOString(),
+  };
+
+  return withSetupEvent(updatedRecord, "signer_approved", {
+    actorFid: status.fid,
+    data: { publicKey: status.publicKey },
+  });
+}
+
 function removeUndefinedData(
   data: SetupAuditEvent["data"],
 ): SetupAuditEvent["data"] {
@@ -907,6 +1076,9 @@ function applyFarcasterVerification(
       hostFid: verifiedHost.fid,
       farcasterChannelState: "completed",
       signerApproved: undefined,
+      signerRequestUrl: undefined,
+      signerPublicKey: undefined,
+      signerStatus: undefined,
       eligibleChannels: undefined,
       selectedChannelSlug: undefined,
       reservedSlug: undefined,
@@ -1082,9 +1254,9 @@ function applySetupStepSubmission(
       return {
         ok: false,
         status: 501,
-        error: "signer approval is not implemented yet",
+        error: "use signer approval endpoints",
         message:
-          "The Arch signer must be approved by the verified host FID before setup can continue.",
+          "Create and poll signer approval through the signer request/status endpoints so the broker can verify the signer belongs to the host FID.",
       };
     case "choose-community":
       return applyChooseCommunitySubmission(state, values);
@@ -1852,6 +2024,10 @@ function eventDetail(event: SetupAuditEvent): string {
       return `${actor} created Farcaster auth channel`;
     case "farcaster_verified":
       return `${actor} verified Farcaster`;
+    case "signer_request_created":
+      return `${actor} created signer request`;
+    case "signer_approved":
+      return `${actor} approved signer`;
     case "channels_refreshed":
       return `${actor} refreshed${count} channel choices`;
     case "step_submitted":

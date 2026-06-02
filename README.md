@@ -100,6 +100,10 @@ When the auth-client verifier is active, the browser setup page renders the
 relay URL as an inline QR and auto-polls the session until the Farcaster
 signature advances setup to signer preparation.
 
+The setup broker now has signer approval request/status endpoints behind a
+provider boundary. The default signer provider fails closed, and setup state is
+limited to non-secret request URLs and signer public keys.
+
 The setup broker also renders unclaimed `*.arches.lat` hostnames as creation
 invitations. Visiting an unclaimed Arch should point the host toward Farcaster
 verification rather than accepting a manual admin claim.
@@ -140,8 +144,9 @@ curl -fsSL http://localhost:3020/api/setup/sessions/SESSION_ID/events
 ```
 
 This is the first scaffold for Discourse-style setup provenance. It records
-session creation, channel refresh, step submission, slug reservation, and tunnel
-provisioning events without storing tunnel tokens or signer material.
+session creation, Farcaster verification, signer request/approval, channel
+refresh, step submission, slug reservation, and tunnel provisioning events
+without storing tunnel tokens or private signer material.
 
 The setup broker can also export the server-derived Arch config snapshot:
 
@@ -152,8 +157,9 @@ curl -fsSL -X POST http://localhost:3020/api/setup/sessions/SESSION_ID/arch/conf
 This is the Arches equivalent of Discourse applying wizard fields into site
 settings. It returns structured config plus non-secret `.env` values such as
 `ARCH_SLUG`, `ARCH_DOMAIN`, `ARCH_SURFACE_PRESET`, `ARCH_GRAMMAR_PRESET`,
-`ARCH_THEME_PRESET`, `ARCH_SURFACE_TITLE`, and `ARCH_PROVENANCE_LABEL`. It does
-not include tunnel tokens or signer material.
+`ARCH_THEME_PRESET`, `ARCH_SURFACE_TITLE`, `ARCH_PROVENANCE_LABEL`, and the
+optional non-secret `ARCH_SIGNER_PUBLIC_KEY`. It does not include tunnel tokens
+or private signer material.
 
 The setup schema now includes Discourse-style community-surface choices:
 surface type (`village`, `bulletin`, `library`), posting grammar

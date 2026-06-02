@@ -296,6 +296,12 @@ verifies completed SIWF messages before deriving the host FID, and renders an
 inline QR with browser auto-polling on the setup page. Otherwise the default
 verification provider intentionally returns `501`.
 
+The broker also has the first signer approval provider boundary. It can create
+a signer request URL, poll signer status, and advance setup only when the
+approved signer FID matches the verified host FID. The current default provider
+fails closed; setup state may store a request URL and signer public key, but
+must not store signer private keys, mnemonic material, or custody secrets.
+
 `packages/setup-schema` now contains the first concrete version of this shape:
 renderer-neutral setup steps, fields, choices, completion state, submission
 validation, a terminal renderer, and the product invariant that composer unlock
@@ -314,8 +320,9 @@ equivalent of Discourse applying wizard fields into `SiteSetting`: verified
 session state becomes appliance config fields such as `ARCH_SLUG`,
 `ARCH_DOMAIN`, `ARCH_ADMIN_FID`, `ARCH_SURFACE_PRESET`,
 `ARCH_GRAMMAR_PRESET`, `ARCH_THEME_PRESET`, `ARCH_SURFACE_TITLE`, and
-`ARCH_PROVENANCE_LABEL`. The snapshot is intentionally non-secret and does not
-carry tunnel tokens or signer material.
+`ARCH_PROVENANCE_LABEL`. When available, it may also include non-secret
+`ARCH_SIGNER_PUBLIC_KEY`. The snapshot is intentionally non-secret and does not
+carry tunnel tokens or private signer material.
 
 The first configure-surface choices now mirror the useful Discourse category
 setup pattern: pick the kind of space before detailed configuration. Arches
@@ -355,8 +362,10 @@ Cloudflare routing, and appliance config as the underlying infra.
    (started with the terminal session handoff).
 12. Add unclaimed-subdomain page and wildcard routing (started in
    `apps/setup-broker`).
-13. Wire Hypersnap Lite publish probe and signer storage.
-14. Enable posting only when the publish contract is confirmed.
+13. Add production signer request provider and appliance-side signer storage
+   (provider boundary started in `apps/setup-broker`).
+14. Wire Hypersnap Lite publish probe.
+15. Enable posting only when the publish contract is confirmed.
 
 ## Product Principle
 

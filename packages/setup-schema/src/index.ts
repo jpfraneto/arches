@@ -60,6 +60,9 @@ export type SetupState = {
   farcasterChannelState?: "pending" | "completed";
   hostFid?: number;
   signerApproved?: boolean;
+  signerRequestUrl?: string;
+  signerPublicKey?: string;
+  signerStatus?: "waiting" | "approved";
   eligibleChannels?: EligibleChannel[];
   selectedChannelSlug?: string;
   reservedSlug?: string;
@@ -296,19 +299,35 @@ function verifyFarcasterStep(state: SetupState): SetupStep {
 }
 
 function prepareSignerStep(state: SetupState): SetupStep {
+  const approved = Boolean(state.signerApproved);
+
   return {
     id: "prepare-signer",
     title: "Prepare Signer",
     description: "Approve a signer that belongs to this Arch and stays with the appliance.",
-    status: statusAfter(Boolean(state.hostFid), Boolean(state.signerApproved)),
+    status: statusAfter(Boolean(state.hostFid), approved),
     fields: [
       {
         id: "signer",
         type: "status",
         label: "Arch signer",
-        value: state.signerApproved ? "approved" : "waiting",
-        description: "The Arches factory FID must not become the posting identity for every Arch.",
+        value: approved ? "approved" : state.signerStatus ?? "waiting",
+        description: state.signerPublicKey
+          ? `Approved signer public key: ${state.signerPublicKey}.`
+          : "The Arches factory FID must not become the posting identity for every Arch.",
       },
+      ...(state.signerRequestUrl && !approved
+        ? [
+            {
+              id: "signerRequest",
+              type: "qr" as const,
+              label: "Signer approval",
+              value: state.signerRequestUrl,
+              description:
+                "Approve this signer from a Farcaster client. Arches must not store signer private keys.",
+            },
+          ]
+        : []),
     ],
   };
 }

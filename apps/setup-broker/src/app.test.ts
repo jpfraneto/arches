@@ -252,6 +252,129 @@ describe("setup broker", () => {
     expect(body.events.at(-1).actorFid).toBe(18350);
   });
 
+  test("requires verified host FID before creating signer request", async () => {
+    const app = createSetupBrokerApp();
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/signer/request`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.message).toContain("verifies the host FID");
+  });
+
+  test("fails closed when signer approval provider is not configured", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({ hostFid: 18350 }),
+      headers: { "content-type": "application/json" },
+    });
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/signer/request`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(501);
+    expect(body.message).toContain("Signer approval is not configured");
+  });
+
+  test("creates a signer approval request without storing signer secrets", async () => {
+    const app = createSetupBrokerApp({
+      allowDevStateUpdates: true,
+      signerApprovalProvider: signerApprovalProvider({ state: "pending" }),
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({ hostFid: 18350 }),
+      headers: { "content-type": "application/json" },
+    });
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/signer/request`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.session.currentStepId).toBe("prepare-signer");
+    expect(body.session.steps[1].fields[1].value).toBe(
+      "farcaster://signer-request?token=signer_123",
+    );
+    expect(body.events.at(-1).type).toBe("signer_request_created");
+    expect(JSON.stringify(body)).not.toContain("privateKey");
+    expect(JSON.stringify(body)).not.toContain("secret");
+    expect(JSON.stringify(body)).not.toContain("mnemonic");
+  });
+
+  test("polls signer approval and advances after matching host FID approval", async () => {
+    const app = createSetupBrokerApp({
+      allowDevStateUpdates: true,
+      signerApprovalProvider: signerApprovalProvider({
+        state: "approved",
+        fid: 18350,
+        publicKey: "0xsignerpublickey",
+      }),
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({ hostFid: 18350 }),
+      headers: { "content-type": "application/json" },
+    });
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/signer/request`, {
+      method: "POST",
+    });
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/signer/status`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.session.currentStepId).toBe("choose-community");
+    expect(body.session.steps[1].fields[0].value).toBe("approved");
+    expect(body.session.steps[1].fields[0].description).toContain("0xsignerpublickey");
+    expect(body.events.at(-1).type).toBe("signer_approved");
+  });
+
+  test("rejects signer approval for a different FID", async () => {
+    const app = createSetupBrokerApp({
+      allowDevStateUpdates: true,
+      signerApprovalProvider: signerApprovalProvider({
+        state: "approved",
+        fid: 999,
+        publicKey: "0xwrongfid",
+      }),
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({ hostFid: 18350 }),
+      headers: { "content-type": "application/json" },
+    });
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/signer/request`, {
+      method: "POST",
+    });
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/signer/status`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.message).toContain("does not match the verified host FID");
+  });
+
   test("requires host FID before refreshing eligible channels", async () => {
     const app = createSetupBrokerApp();
     const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
@@ -941,7 +1064,7 @@ describe("setup broker", () => {
     expect(body.message).toContain("derives a host FID");
   });
 
-  test("exports derived Arch config without tunnel tokens or signer material", async () => {
+  test("exports derived Arch config without tunnel tokens or private signer material", async () => {
     const app = createSetupBrokerApp({ allowDevStateUpdates: true });
     const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
     const created = await createResponse.json();
@@ -1087,6 +1210,32 @@ function authChannelProvider(options: {
       expect(request.message).toBe("signed SIWF message");
       expect(request.signature).toBe("0xsignature");
       return { fid: 18350 };
+    },
+  };
+}
+
+function signerApprovalProvider(
+  status:
+    | {
+        state: "pending";
+      }
+    | {
+        state: "approved";
+        fid: number;
+        publicKey: string;
+      },
+) {
+  return {
+    async createSignerRequest(request) {
+      expect(request.hostFid).toBe(18350);
+      return {
+        requestToken: "signer_123",
+        url: "farcaster://signer-request?token=signer_123",
+      };
+    },
+    async getSignerStatus(requestToken) {
+      expect(requestToken).toBe("signer_123");
+      return status;
     },
   };
 }
