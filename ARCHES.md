@@ -136,6 +136,9 @@ The opportunity for Arches:
 Discourse communities own their space. Arches communities should own their
 surface while speaking a shared protocol.
 
+The detailed translation from Discourse's setup model to the Arches setup
+broker and installer flow lives in `docs/DISCOURSE_TO_ARCHES.md`.
+
 ## What Arches Is Not
 
 Arches is not:

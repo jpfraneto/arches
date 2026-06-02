@@ -3,7 +3,10 @@
 Arches lets any community create its own Farcaster client in one command.
 
 Read `ARCHES.md` for the product philosophy, identity model, and Discourse
-inspiration behind the project.
+inspiration behind the project. Read `docs/DISCOURSE_TO_ARCHES.md` for the
+setup architecture Arches should adapt from Discourse: server-defined wizard
+steps, durable community settings, terminal/web rendering, and verified
+Farcaster ownership before launch.
 
 An Arch is a custom social surface for one community. It has its own domain,
 feed, interface, posting grammar, and provenance. The Arches feed only shows
