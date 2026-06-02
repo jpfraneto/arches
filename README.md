@@ -6,7 +6,9 @@ Read `ARCHES.md` for the product philosophy, identity model, and Discourse
 inspiration behind the project. Read `docs/DISCOURSE_TO_ARCHES.md` for the
 setup architecture Arches should adapt from Discourse: server-defined wizard
 steps, durable community settings, terminal/web rendering, and verified
-Farcaster ownership before launch.
+Farcaster ownership before launch. Read `docs/SETUP_CONTRACT.md` for the
+step-by-step proof, side-effect, audit, and unlock contract that should guide
+setup broker implementation.
 
 An Arch is a custom social surface for one community. It has its own domain,
 feed, interface, posting grammar, and provenance. The Arches feed only shows
@@ -143,7 +145,7 @@ bun run src/index.ts
 setup state and stores the generated `tunnel-local` install command. It does not
 mark the appliance as launched or unlock posting.
 
-The setup broker records an in-memory setup audit trail. Read it with:
+The setup broker records a setup audit trail. Read it with:
 
 ```bash
 curl -fsSL http://localhost:3020/api/setup/sessions/SESSION_ID/events
@@ -175,6 +177,17 @@ or private signer material.
 The browser launch step exposes the same export as a setup action. After export,
 the non-secret env block is rendered back into the launch step for review and
 copying; changing earlier setup choices clears it so stale config is not reused.
+The launch step then exposes `Check appliance launch`, which can use
+`ARCHES_APPLIANCE_LAUNCH_PROVIDER=http-health` to verify
+`https://<arch-domain>/health` before setup advances to publishing
+verification. This still does not unlock posting.
+Publishing verification then uses
+`ARCHES_PUBLISHING_VERIFICATION_PROVIDER=http-probe` to call
+`https://<arch-domain>/api/publishing/probe` and requires confirmed Farcaster
+proof before the composer can ever unlock. The current API probe returns `501`
+until Hypersnap Lite publishing is wired.
+After publishing proof is recorded, the setup broker exposes `Unlock composer`
+as the final action and logs `composer_unlocked`.
 
 The setup schema now includes Discourse-style community-surface choices:
 surface type (`village`, `bulletin`, `library`), posting grammar
@@ -195,6 +208,20 @@ Each setup response also includes `schemaVersion`, broker `createdAt` and
 `updatedAt` timestamps, and a compact server-derived summary with readiness,
 progress count, blocked count, current step title, and next action. The terminal
 output and browser sidebar render the same summary.
+
+The setup broker can optionally persist sanitized setup sessions and slug
+reservations to a JSON file:
+
+```bash
+ARCHES_SETUP_STORE_FILE=/var/lib/arches/setup-store.json bun run src/index.ts
+```
+
+That file deliberately omits transient delivery fields and secret-adjacent
+tokens. Signer request tokens, Farcaster relay channel tokens, signer request
+URLs, generated install commands, generated env output, tunnel tokens, API
+tokens, mnemonic material, and private signer material must not be persisted.
+Sanitized setup audit events are preserved so completed-step provenance can
+survive a small deployment restart.
 
 Arches is the seed, not the host identity. Each Arch is held up by the person or
 community running that appliance. Any app/factory Farcaster credential used by
@@ -286,7 +313,9 @@ See `docs/DOMAIN_SETUP.md` for DNS and static hosting notes.
 ## Apps
 
 - `apps/api` contains a minimal Bun + Hono API.
-- `apps/web` contains a minimal web composer and feed.
+- `apps/web` contains a minimal web composer and feed. The composer reads
+  `/api/arch` and stays disabled unless Farcaster publishing is enabled by the
+  appliance API.
 - `apps/setup-broker` contains the first setup-session API scaffold for the
   Discourse-inspired zero-info installer flow.
 - `packages/setup-schema` contains the Discourse-inspired setup session schema
@@ -379,7 +408,9 @@ experimental discount, but it does not collect payment or verify transfers.
   wired.
 - The Arch feed must map 1:1 to Farcaster data; local-only Arch posts are not
   accepted.
-- Admin verification is not implemented yet.
+- Production host/admin verification is not complete yet. The setup broker has
+  Farcaster verification provider boundaries, but public setup must still use a
+  real configured verifier and must not accept manual admin claims.
 - Payment, licensing, $ARCHES discount settlement, and onchain payment
   verification are not implemented yet.
 - The local read plane is scoped to casts created through an Arch. It is not a

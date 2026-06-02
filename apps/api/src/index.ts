@@ -135,6 +135,20 @@ app.post("/api/casts", async (c) => {
   );
 });
 
+app.post("/api/publishing/probe", async (c) => {
+  return c.json(
+    {
+      ok: false,
+      protocol: "farcaster",
+      status: "not_implemented",
+      error: "Hypersnap Lite publishing probe is not implemented yet",
+      message:
+        "The setup broker must not unlock posting until this endpoint returns confirmed Farcaster proof from Hypersnap Lite.",
+    },
+    501,
+  );
+});
+
 function optionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
 }

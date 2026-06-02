@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import {
   createSetupBrokerApp,
   resetSetupBrokerSessionsForTests,
   sanitizeSetupSessionRecordForPersistence,
   type SetupSessionRecord,
 } from "./app";
+import { ApplianceLaunchError } from "./appliance-launch";
 import { FarcasterVerificationError } from "./farcaster-verification";
+import { PublishingVerificationError } from "./publishing-verification";
 import {
+  createJsonFileSetupBrokerStore,
   createInMemorySetupBrokerStore,
   snapshotSetupBrokerStore,
 } from "./setup-store";
@@ -35,12 +40,21 @@ describe("setup broker", () => {
       totalStepCount: 9,
       blockedStepCount: 1,
       currentStepTitle: "Verify Farcaster",
-      nextAction: "Continue with Verify Farcaster.",
+      nextAction: "Scan Farcaster QR.",
     });
     expect(body.terminal).toContain("Arches setup: setup_");
     expect(body.terminal).toContain("Progress: 0/9 steps complete");
     expect(body.terminal).toContain("Readiness: in-progress");
+    expect(body.terminal).toContain(
+      "Step context: None -> Verify Farcaster -> Prepare Signer",
+    );
     expect(body.terminal).toContain("[>] Verify Farcaster");
+    expect(body.terminal).toContain(
+      `Refresh: curl -fsSL https://setup.arches.test/api/setup/sessions/${body.session.sessionId}/terminal`,
+    );
+    expect(body.terminal).toContain(
+      `Browser setup: https://setup.arches.test/setup/${body.session.sessionId}`,
+    );
     expect(body.setupUrl).toStartWith("https://setup.arches.test/setup/setup_");
     expect(body.events).toHaveLength(1);
     expect(body.events[0].type).toBe("session_created");
@@ -64,7 +78,13 @@ describe("setup broker", () => {
     expect(sessionResponse.status).toBe(200);
     expect((await sessionResponse.json()).session.sessionId).toBe(sessionId);
     expect(terminalResponse.status).toBe(200);
-    expect(await terminalResponse.text()).toContain("Current step: Verify Farcaster");
+    const terminal = await terminalResponse.text();
+    expect(terminal).toContain("Current step: Verify Farcaster");
+    expect(terminal).toContain("Step context: None -> Verify Farcaster -> Prepare Signer");
+    expect(terminal).toContain(
+      `Refresh: curl -fsSL http://localhost:3020/api/setup/sessions/${sessionId}/terminal`,
+    );
+    expect(terminal).toContain(`Browser setup: http://localhost:3020/setup/${sessionId}`);
   });
 
   test("updates setup session timestamps after broker mutations", async () => {
@@ -185,6 +205,77 @@ describe("setup broker", () => {
     expect(JSON.stringify(snapshot)).not.toContain("channel_123");
     expect(JSON.stringify(snapshot)).not.toContain("signer_request_token");
     expect(JSON.stringify(snapshot)).not.toContain("ARCH_DOMAIN");
+  });
+
+  test("persists sanitized setup audit events through the JSON store", async () => {
+    const filePath = `${tmpdir()}/arches-setup-broker-${crypto.randomUUID()}.json`;
+    const setupStore = createJsonFileSetupBrokerStore<SetupSessionRecord>({
+      filePath,
+      sanitizeSession: sanitizeSetupSessionRecordForPersistence,
+    });
+    const app = createSetupBrokerApp({
+      allowDevStateUpdates: true,
+      setupStore,
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    const sessionId = created.session.sessionId;
+
+    await app.request(`/api/setup/sessions/${sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({
+        hostFid: 18350,
+        signerApproved: true,
+        eligibleChannels: [{ slug: "anky", role: "lead" }],
+        farcasterChannelToken: "remove-me-channel-token",
+        signerRequestUrl: "farcaster://signer-request?token=remove-me-signer-token",
+        installCommand:
+          "curl -fsSL https://install.arches.lat | bash -s -- --tunnel-token remove-me-tunnel-token",
+        archConfigEnv: "ARCH_SLUG=anky\nARCH_DOMAIN=anky.arches.lat",
+      }),
+      headers: { "content-type": "application/json" },
+    });
+    await app.request(`/api/setup/sessions/${sessionId}/steps/choose-community`, {
+      method: "POST",
+      body: JSON.stringify({ channel: "anky" }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const reloadedStore = createJsonFileSetupBrokerStore<SetupSessionRecord>({
+      filePath,
+      sanitizeSession: sanitizeSetupSessionRecordForPersistence,
+    });
+    const reloadedApp = createSetupBrokerApp({
+      setupStore: reloadedStore,
+    });
+    const reloadedRecord = reloadedStore.sessions.get(sessionId);
+    const persisted = readFileSync(filePath, "utf8");
+    const reloadedResponse = await reloadedApp.request(`/api/setup/sessions/${sessionId}`);
+    const reloadedBody = await reloadedResponse.json();
+
+    expect(reloadedRecord?.events.map((event) => event.type)).toEqual([
+      "session_created",
+      "dev_state_updated",
+      "step_submitted",
+    ]);
+    expect(reloadedRecord?.events.at(-1)?.data?.stepId).toBe("choose-community");
+    expect(reloadedRecord?.state.selectedChannelSlug).toBe("anky");
+    expect(JSON.stringify(reloadedRecord)).not.toContain("remove-me-channel-token");
+    expect(JSON.stringify(reloadedRecord)).not.toContain("remove-me-signer-token");
+    expect(JSON.stringify(reloadedRecord)).not.toContain("remove-me-tunnel-token");
+    expect(JSON.stringify(reloadedRecord)).not.toContain("ARCH_DOMAIN");
+    expect(persisted).toContain("step_submitted");
+    expect(persisted).not.toContain("remove-me-channel-token");
+    expect(persisted).not.toContain("remove-me-signer-token");
+    expect(persisted).not.toContain("remove-me-tunnel-token");
+    expect(reloadedResponse.status).toBe(200);
+    expect(reloadedBody.session.currentStepId).toBe("name-surface");
+    expect(reloadedBody.session.steps[2].completionEventType).toBe("step_submitted");
+    expect(reloadedBody.session.steps[2].completionEventId).toBe(
+      reloadedRecord?.events.at(-1)?.id,
+    );
+    expect(reloadedBody.session.steps[2].completedAt).toBe(reloadedRecord?.events.at(-1)?.at);
+    expect(reloadedBody.session.steps[2].completedByFid).toBe(18350);
   });
 
   test("keeps sanitized setup store snapshots disabled by default", async () => {
@@ -642,6 +733,59 @@ describe("setup broker", () => {
     expect(JSON.stringify(body)).not.toContain("mnemonic");
   });
 
+  test("renders executable terminal commands for current schema actions", async () => {
+    const app = createSetupBrokerApp({
+      allowDevStateUpdates: true,
+      publicOrigin: "https://setup.arches.test",
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({ hostFid: 18350 }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/terminal`,
+    );
+    const terminal = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(terminal).toContain(
+      `Command: curl -fsSL -X POST https://setup.arches.test/api/setup/sessions/${created.session.sessionId}/actions/request-signer-approval`,
+    );
+  });
+
+  test("renders executable terminal submit commands for current schema fields", async () => {
+    const app = createSetupBrokerApp({
+      allowDevStateUpdates: true,
+      publicOrigin: "https://setup.arches.test",
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({
+        hostFid: 18350,
+        signerApproved: true,
+        eligibleChannels: [{ slug: "anky", role: "lead" }],
+      }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/terminal`,
+    );
+    const terminal = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(terminal).toContain(
+      `curl -fsSL -X POST https://setup.arches.test/api/setup/sessions/${created.session.sessionId}/steps/choose-community`,
+    );
+    expect(terminal).toContain(`--data '{"channel":"<channel>"}'`);
+  });
+
   test("rejects generic setup actions that are not on the current active step", async () => {
     const app = createSetupBrokerApp();
     const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
@@ -1077,8 +1221,16 @@ describe("setup broker", () => {
     expect(html).toContain("Current step");
     expect(html).toContain('<span class="summary-label">Progress</span>');
     expect(html).toContain('<span class="summary-value">0/9</span>');
-    expect(html).toContain("Continue with Verify Farcaster.");
+    expect(html).toContain("Scan Farcaster QR.");
     expect(html).toContain("Step 1 of 9");
+    expect(html).toContain('aria-label="Setup step context"');
+    expect(html).toContain('<div class="step-context-label">Previous</div>');
+    expect(html).toContain('<div class="step-context-title">None</div>');
+    expect(html).toContain('<div class="step-context-label">Current</div>');
+    expect(html).toContain('<div class="step-context-title">Verify Farcaster</div>');
+    expect(html).toContain('<div class="step-context-label">Next</div>');
+    expect(html).toContain('<div class="step-context-title">Prepare Signer</div>');
+    expect(html).toContain("Verify Farcaster before preparing an Arch signer.");
     expect(html).toContain('<span class="step-meta">key</span>');
     expect(html).toContain("Verify Farcaster");
     expect(html).toContain("Setup Log");
@@ -1197,6 +1349,7 @@ describe("setup broker", () => {
       `action="/setup/${created.session.sessionId}/steps/choose-community"`,
     );
     expect(html).toContain('name="channel" value="anky"');
+    expect(html).toContain("Submit Choose Community through the current-step updater.");
     expect(html).toContain("<button type=\"submit\">Continue</button>");
   });
 
@@ -1664,6 +1817,382 @@ describe("setup broker", () => {
     expect(updatedPageHtml).not.toContain("mnemonic");
   });
 
+  test("fails closed when appliance launch verification provider is not configured", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({
+        ...readyTunnelProvisioningState(),
+        tunnelId: "tunnel_123",
+        tunnelProvisioned: true,
+        archConfigExported: true,
+        archConfigEnv: "ARCH_SLUG=anky",
+      }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/actions/check-appliance-launch`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(501);
+    expect(body.message).toContain("Appliance launch verification is not configured");
+  });
+
+  test("checks appliance launch from the browser wizard before publishing verification", async () => {
+    const calls: Array<{ slug: string; domain: string; hostingMode: string }> = [];
+    const app = createSetupBrokerApp({
+      allowDevStateUpdates: true,
+      applianceLaunchProvider: {
+        async verifyApplianceLaunch(request) {
+          calls.push({
+            slug: request.slug,
+            domain: request.domain,
+            hostingMode: request.hostingMode,
+          });
+          return {
+            launched: true,
+            checkedUrl: `https://${request.domain}/health`,
+          };
+        },
+      },
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({
+        ...readyTunnelProvisioningState(),
+        tunnelId: "tunnel_123",
+        tunnelProvisioned: true,
+        archConfigExported: true,
+        archConfigEnv: "ARCH_SLUG=anky",
+      }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const pageResponse = await app.request(`/setup/${created.session.sessionId}`);
+    const pageHtml = await pageResponse.text();
+    const response = await app.request(
+      `/setup/${created.session.sessionId}/actions/check-appliance-launch`,
+      {
+        method: "POST",
+        redirect: "manual",
+      },
+    );
+    const sessionResponse = await app.request(`/api/setup/sessions/${created.session.sessionId}`);
+    const body = await sessionResponse.json();
+
+    expect(pageResponse.status).toBe(200);
+    expect(pageHtml).toContain(
+      `action="/setup/${created.session.sessionId}/actions/check-appliance-launch"`,
+    );
+    expect(pageHtml).toContain("Check appliance launch");
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(`/setup/${created.session.sessionId}`);
+    expect(calls).toEqual([
+      {
+        slug: "anky",
+        domain: "anky.arches.lat",
+        hostingMode: "tunnel-local",
+      },
+    ]);
+    expect(body.session.currentStepId).toBe("verify-publishing");
+    expect(body.session.steps[6].status).toBe("completed");
+    expect(body.session.steps[6].completionEventType).toBe("appliance_launched");
+    expect(body.session.steps[7].status).toBe("active");
+    expect(body.session.steps[8].status).toBe("blocked");
+    expect(body.events.at(-1).type).toBe("appliance_launched");
+    expect(body.events.at(-1).data.checkedUrl).toBe("https://anky.arches.lat/health");
+  });
+
+  test("surfaces appliance launch verification errors without advancing setup", async () => {
+    const app = createSetupBrokerApp({
+      allowDevStateUpdates: true,
+      applianceLaunchProvider: {
+        async verifyApplianceLaunch() {
+          throw new ApplianceLaunchError("Health endpoint is not ready yet.", 502);
+        },
+      },
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({
+        ...readyTunnelProvisioningState(),
+        tunnelId: "tunnel_123",
+        tunnelProvisioned: true,
+        archConfigExported: true,
+        archConfigEnv: "ARCH_SLUG=anky",
+      }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/actions/check-appliance-launch`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+    const sessionResponse = await app.request(`/api/setup/sessions/${created.session.sessionId}`);
+    const sessionBody = await sessionResponse.json();
+
+    expect(response.status).toBe(502);
+    expect(body.message).toBe("Health endpoint is not ready yet.");
+    expect(sessionBody.session.currentStepId).toBe("launch-appliance");
+    expect(sessionBody.session.steps[6].status).toBe("active");
+    expect(sessionBody.events.at(-1).type).toBe("appliance_launch_failed");
+    expect(sessionBody.events.at(-1).data.status).toBe(502);
+  });
+
+  test("fails closed when publishing verification provider is not configured", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify(readyPublishingVerificationState()),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/actions/verify-publishing`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(501);
+    expect(body.message).toContain("Publishing verification is not configured");
+  });
+
+  test("verifies publishing from the browser wizard before composer unlock", async () => {
+    const calls: Array<{ slug: string; domain: string; hostFid: number }> = [];
+    const app = createSetupBrokerApp({
+      allowDevStateUpdates: true,
+      publishingVerificationProvider: {
+        async verifyPublishing(request) {
+          calls.push({
+            slug: request.slug,
+            domain: request.domain,
+            hostFid: request.hostFid,
+          });
+          return {
+            verified: true,
+            checkedUrl: `https://${request.domain}/api/publishing/probe`,
+            farcasterHash: "0x1234abcd",
+          };
+        },
+      },
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify(readyPublishingVerificationState()),
+      headers: { "content-type": "application/json" },
+    });
+
+    const pageResponse = await app.request(`/setup/${created.session.sessionId}`);
+    const pageHtml = await pageResponse.text();
+    const response = await app.request(
+      `/setup/${created.session.sessionId}/actions/verify-publishing`,
+      {
+        method: "POST",
+        redirect: "manual",
+      },
+    );
+    const sessionResponse = await app.request(`/api/setup/sessions/${created.session.sessionId}`);
+    const body = await sessionResponse.json();
+
+    expect(pageResponse.status).toBe(200);
+    expect(pageHtml).toContain(
+      `action="/setup/${created.session.sessionId}/actions/verify-publishing"`,
+    );
+    expect(pageHtml).toContain("Verify publishing");
+    expect(pageHtml).toContain(
+      "Run the appliance publishing probe and require Farcaster proof before composer unlock.",
+    );
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(`/setup/${created.session.sessionId}`);
+    expect(calls).toEqual([
+      {
+        slug: "anky",
+        domain: "anky.arches.lat",
+        hostFid: 18350,
+      },
+    ]);
+    expect(body.session.currentStepId).toBe("unlock-arch");
+    expect(body.session.steps[7].status).toBe("completed");
+    expect(body.session.steps[7].completionEventType).toBe("publishing_verified");
+    expect(body.session.steps[7].fields[0].description).toContain("0x1234abcd");
+    expect(body.session.steps[8].status).toBe("active");
+    expect(body.events.at(-1).type).toBe("publishing_verified");
+    expect(body.events.at(-1).data.farcasterHash).toBe("0x1234abcd");
+  });
+
+  test("surfaces publishing verification errors without unlocking composer", async () => {
+    const app = createSetupBrokerApp({
+      allowDevStateUpdates: true,
+      publishingVerificationProvider: {
+        async verifyPublishing() {
+          throw new PublishingVerificationError("Publishing probe has no Farcaster proof.", 502);
+        },
+      },
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify(readyPublishingVerificationState()),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/actions/verify-publishing`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+    const sessionResponse = await app.request(`/api/setup/sessions/${created.session.sessionId}`);
+    const sessionBody = await sessionResponse.json();
+
+    expect(response.status).toBe(502);
+    expect(body.message).toBe("Publishing probe has no Farcaster proof.");
+    expect(sessionBody.session.currentStepId).toBe("verify-publishing");
+    expect(sessionBody.session.steps[7].status).toBe("active");
+    expect(sessionBody.session.steps[8].status).toBe("blocked");
+    expect(sessionBody.events.at(-1).type).toBe("publishing_verification_failed");
+    expect(sessionBody.events.at(-1).data.status).toBe(502);
+  });
+
+  test("unlocks the composer from the browser wizard after publishing proof", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify(readyComposerUnlockState()),
+      headers: { "content-type": "application/json" },
+    });
+
+    const pageResponse = await app.request(`/setup/${created.session.sessionId}`);
+    const pageHtml = await pageResponse.text();
+    const response = await app.request(
+      `/setup/${created.session.sessionId}/actions/unlock-composer`,
+      {
+        method: "POST",
+        redirect: "manual",
+      },
+    );
+    const sessionResponse = await app.request(`/api/setup/sessions/${created.session.sessionId}`);
+    const body = await sessionResponse.json();
+
+    expect(pageResponse.status).toBe(200);
+    expect(pageHtml).toContain(
+      `action="/setup/${created.session.sessionId}/actions/unlock-composer"`,
+    );
+    expect(pageHtml).toContain("Unlock composer");
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(`/setup/${created.session.sessionId}`);
+    expect(body.session.completed).toBe(true);
+    expect(body.session.summary.readiness).toBe("complete");
+    expect(body.session.steps[8].status).toBe("completed");
+    expect(body.session.steps[8].completionEventType).toBe("composer_unlocked");
+    expect(body.session.steps[8].fields[0].value).toBe("enabled");
+    expect(body.events.at(-1).type).toBe("composer_unlocked");
+    expect(body.events.at(-1).data.farcasterHash).toBe("0x1234abcd");
+  });
+
+  test("renders readable setup log details for launch, publishing, and unlock events", async () => {
+    const app = createSetupBrokerApp({
+      allowDevStateUpdates: true,
+      applianceLaunchProvider: {
+        async verifyApplianceLaunch(request) {
+          return {
+            launched: true,
+            checkedUrl: `https://${request.domain}/health`,
+          };
+        },
+      },
+      publishingVerificationProvider: {
+        async verifyPublishing(request) {
+          return {
+            verified: true,
+            checkedUrl: `https://${request.domain}/api/publishing/probe`,
+            farcasterHash: "0x1234abcd",
+          };
+        },
+      },
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({
+        ...readyTunnelProvisioningState(),
+        tunnelId: "tunnel_123",
+        tunnelProvisioned: true,
+        archConfigExported: true,
+        archConfigEnv: "ARCH_SLUG=anky",
+      }),
+      headers: { "content-type": "application/json" },
+    });
+    await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/actions/check-appliance-launch`,
+      { method: "POST" },
+    );
+    await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/actions/verify-publishing`,
+      { method: "POST" },
+    );
+    await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/actions/unlock-composer`,
+      { method: "POST" },
+    );
+
+    const pageResponse = await app.request(`/setup/${created.session.sessionId}`);
+    const html = await pageResponse.text();
+
+    expect(pageResponse.status).toBe(200);
+    expect(html).toContain("appliance_launched");
+    expect(html).toContain("FID 18350 verified anky.arches.lat appliance launch");
+    expect(html).toContain("publishing_verified");
+    expect(html).toContain("FID 18350 verified Farcaster publishing 0x1234abcd");
+    expect(html).toContain("composer_unlocked");
+    expect(html).toContain("FID 18350 unlocked anky.arches.lat composer");
+  });
+
+  test("rejects composer unlock without recorded Farcaster proof", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({
+        ...readyPublishingVerificationState(),
+        publishingVerified: true,
+      }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/actions/unlock-composer`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+    const sessionResponse = await app.request(`/api/setup/sessions/${created.session.sessionId}`);
+    const sessionBody = await sessionResponse.json();
+
+    expect(response.status).toBe(409);
+    expect(body.message).toContain("Farcaster publishing proof is recorded");
+    expect(sessionBody.session.completed).toBe(false);
+    expect(sessionBody.session.steps[8].status).toBe("active");
+    expect(sessionBody.events.at(-1).type).toBe("dev_state_updated");
+  });
+
   test("keeps dev state mutation disabled by default", async () => {
     const app = createSetupBrokerApp();
     const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
@@ -1714,6 +2243,26 @@ function readyTunnelProvisioningState() {
     surfaceTitle: "/anky",
     provenanceLabel: "posted via anky",
     surfaceConfigured: true,
+  };
+}
+
+function readyPublishingVerificationState() {
+  return {
+    ...readyTunnelProvisioningState(),
+    tunnelId: "tunnel_123",
+    tunnelProvisioned: true,
+    archConfigExported: true,
+    archConfigEnv: "ARCH_SLUG=anky",
+    applianceLaunched: true,
+  };
+}
+
+function readyComposerUnlockState() {
+  return {
+    ...readyPublishingVerificationState(),
+    publishingVerified: true,
+    publishingProbeHash: "0x1234abcd",
+    publishingProbeCheckedUrl: "https://anky.arches.lat/api/publishing/probe",
   };
 }
 

@@ -13,7 +13,8 @@ community-owned surface.
 
 ## Source Study
 
-This review used the public Discourse repository:
+This review used the public Discourse repository, checked against `main` on
+2026-06-02:
 
 ```text
 https://github.com/discourse/discourse
@@ -41,6 +42,18 @@ The setup flow is concentrated in a small set of files:
   creation flow for community spaces inside an already configured site.
 - `config/site_settings.yml`, `app/models/site_setting.rb`, and
   `app/services/staff_action_logger.rb`: durable settings and audit trail.
+
+See `docs/SETUP_CONTRACT.md` for the Arches implementation contract derived
+from this study: each setup step's required proof, durable side effect, audit
+event, and unlock gate.
+
+The core implementation pattern is small but important: `Wizard` owns step
+order and finds the first incomplete field-bearing step; `Wizard::Builder`
+defines the setup fields and update callbacks; `Wizard::StepUpdater` applies
+accepted fields into durable site settings and logs the completed wizard step;
+`WizardController` returns serialized server-owned wizard state only to an
+admin user. Arches should preserve that control boundary while replacing
+Discourse's admin account with a verified Farcaster host FID.
 
 ## What Worked
 
@@ -322,11 +335,13 @@ remains blocked until Farcaster publishing has been verified.
 
 The schema now carries Discourse-like step metadata as well: `index`,
 `displayIndex`, `previousStepId`, `nextStepId`, status, icon name, fields,
-choices, choice extra labels, and active step actions. Active actions execute
-through a generic broker controller that first checks the current step's schema
-before dispatching to Arches-specific provider code. That mirrors the useful
-part of Discourse's wizard serializers and controller boundary while keeping
-Arches' Farcaster-first setup contract.
+choices, choice extra labels, active step actions, active step submit metadata,
+and status reasons for pending or blocked steps. Active actions execute through
+a generic broker controller that first checks the current step's schema before
+dispatching to Arches-specific provider code. Field-backed steps execute
+through server-owned `submit` metadata instead of renderer-side inference. That
+mirrors the useful part of Discourse's wizard serializers and controller
+boundary while keeping Arches' Farcaster-first setup contract.
 It also carries a server-derived setup summary with readiness, progress count,
 blocked step count, current step title, and next action so terminal and browser
 renderers share the same operator status model.
@@ -336,11 +351,12 @@ instead of dumping raw process memory to disk.
 The broker also has a sanitized store snapshot boundary: it can retain durable
 session facts, reservations, and audit events while dropping signer request
 tokens, Farcaster relay tokens, generated installer commands, and generated env
-output before any future disk or database adapter persists state.
+output before disk or database persistence. The opt-in JSON-file store already
+uses that boundary for small deployments.
 That sanitized snapshot is exposed only through a dev-mode endpoint for local
 inspection; production persistence still needs an authenticated durable adapter.
-It also supports field-level error descriptions so browser submissions can stay
-inside the wizard when validation fails.
+It also supports field-level error descriptions so browser and terminal
+submissions can stay inside the wizard when validation fails.
 
 The broker audit trail is the first Arches equivalent of Discourse's wizard
 history logging. Discourse records completed wizard steps through user history

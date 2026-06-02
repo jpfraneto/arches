@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import {
+  createJsonFileSetupBrokerStore,
   createInMemorySetupBrokerStore,
   snapshotSetupBrokerStore,
 } from "./setup-store";
@@ -71,5 +74,52 @@ describe("setup broker store", () => {
     });
     expect(JSON.stringify(snapshot)).not.toContain("signer_request_token");
     expect(JSON.stringify(snapshot)).not.toContain("remove-me");
+  });
+
+  test("persists sanitized sessions and reservations to a JSON file", () => {
+    const filePath = `${tmpdir()}/arches-setup-store-${crypto.randomUUID()}.json`;
+    type Record = {
+      state: {
+        sessionId: string;
+        deliveryField?: string;
+      };
+    };
+    const store = createJsonFileSetupBrokerStore<Record>({
+      filePath,
+      now: () => new Date("2026-06-02T12:00:00.000Z"),
+      sanitizeSession(record) {
+        return {
+          state: {
+            sessionId: record.state.sessionId,
+          },
+        };
+      },
+    });
+
+    store.sessions.set("setup_1", {
+      state: { sessionId: "setup_1", deliveryField: "remove-me" },
+    });
+    store.slugReservations.set("anky", "setup_1");
+    store.signerRequestTokens.set("setup_1", "signer_request_token");
+
+    const reloadedStore = createJsonFileSetupBrokerStore<Record>({
+      filePath,
+      sanitizeSession(record) {
+        return record;
+      },
+    });
+    const persisted = JSON.parse(readFileSync(filePath, "utf8"));
+
+    expect(reloadedStore.sessions.get("setup_1")).toEqual({
+      state: { sessionId: "setup_1" },
+    });
+    expect(reloadedStore.slugReservations.get("anky")).toBe("setup_1");
+    expect(reloadedStore.signerRequestTokens.get("setup_1")).toBeUndefined();
+    expect(persisted.generatedAt).toBe("2026-06-02T12:00:00.000Z");
+    expect(JSON.stringify(persisted)).not.toContain("remove-me");
+    expect(JSON.stringify(persisted)).not.toContain("signer_request_token");
+
+    reloadedStore.clear();
+    expect(JSON.parse(readFileSync(filePath, "utf8")).sessions).toEqual({});
   });
 });

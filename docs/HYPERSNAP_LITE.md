@@ -32,8 +32,37 @@ separate:
 Keeping this boundary makes the appliance replaceable and keeps this repo from
 turning into a second implementation of Hypersnap Lite.
 
+## Publishing Probe Contract
+
+The setup broker must not unlock posting until the appliance proves that
+Hypersnap Lite can publish Farcaster data for this Arch. The public probe shape
+is:
+
+```http
+POST /api/publishing/probe
+```
+
+A passing response must be equivalent to:
+
+```json
+{
+  "ok": true,
+  "protocol": "farcaster",
+  "status": "confirmed",
+  "farcasterHash": "0x..."
+}
+```
+
+Local-only probe responses are not valid. The broker-side
+`ARCHES_PUBLISHING_VERIFICATION_PROVIDER=http-probe` provider rejects anything
+that is not confirmed Farcaster proof.
+
 ## v0 Status
 
 The v0 API marks new casts as `local`. It does not yet call Hypersnap Lite or
 claim Farcaster submission. Future work should define the exact request/response
 contract between `arches-api` and the `hypersnap-lite` service.
+
+The current `POST /api/publishing/probe` endpoint returns `501` until that
+contract is implemented. This is intentional: setup must fail closed rather
+than unlock a local-only composer.

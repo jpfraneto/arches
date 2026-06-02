@@ -7,6 +7,11 @@ import {
   type ArchConfigSnapshot,
 } from "./arch-config";
 import {
+  ApplianceLaunchError,
+  createApplianceLaunchProvider,
+  type ApplianceLaunchProvider,
+} from "./appliance-launch";
+import {
   createChannelEligibilityProvider,
   type ChannelEligibilityProvider,
 } from "./channel-eligibility";
@@ -22,6 +27,11 @@ import {
   type FarcasterVerificationResult,
   type FarcasterSignInChannelStatus,
 } from "./farcaster-verification";
+import {
+  PublishingVerificationError,
+  createPublishingVerificationProvider,
+  type PublishingVerificationProvider,
+} from "./publishing-verification";
 import {
   SignerApprovalError,
   createSignerApprovalProvider,
@@ -72,7 +82,12 @@ type SetupAuditEventType =
   | "slug_reserved"
   | "tunnel_provisioned"
   | "tunnel_provision_failed"
-  | "arch_config_exported";
+  | "arch_config_exported"
+  | "appliance_launched"
+  | "appliance_launch_failed"
+  | "publishing_verified"
+  | "publishing_verification_failed"
+  | "composer_unlocked";
 
 type SetupAuditEvent = {
   id: string;
@@ -89,6 +104,8 @@ type BrokerOptions = {
   tunnelProvisioningProvider?: TunnelProvisioningProvider;
   farcasterVerificationProvider?: FarcasterVerificationProvider;
   signerApprovalProvider?: SignerApprovalProvider;
+  applianceLaunchProvider?: ApplianceLaunchProvider;
+  publishingVerificationProvider?: PublishingVerificationProvider;
   setupStore?: SetupBrokerStore<SetupSessionRecord>;
   publicOrigin?: string;
 };
@@ -128,6 +145,9 @@ type SetupActionResult =
 type SignerActionResult = SetupActionResult;
 type ChannelRefreshResult = SetupActionResult;
 type TunnelProvisionResult = SetupActionResult;
+type ApplianceLaunchCheckResult = SetupActionResult;
+type PublishingVerificationActionResult = SetupActionResult;
+type ComposerUnlockActionResult = SetupActionResult;
 
 type ActiveActionResult =
   | {
@@ -159,6 +179,10 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
   const farcasterVerificationProvider =
     options.farcasterVerificationProvider ?? createFarcasterVerificationProvider({});
   const signerApprovalProvider = options.signerApprovalProvider ?? createSignerApprovalProvider();
+  const applianceLaunchProvider =
+    options.applianceLaunchProvider ?? createApplianceLaunchProvider({});
+  const publishingVerificationProvider =
+    options.publishingVerificationProvider ?? createPublishingVerificationProvider({});
 
   app.use(
     "*",
@@ -207,7 +231,7 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     const record = sessions.get(state.sessionId)!;
     const response = sessionResponse(record, publicOrigin);
 
-    return c.text(`${response.terminal}\n\nBrowser setup: ${response.setupUrl}\n`);
+    return c.text(`${response.terminal}\n`);
   });
 
   app.get("/setup", async (c) => {
@@ -260,7 +284,15 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     const record = sessions.get(c.req.param("sessionId"));
     if (!record) return c.text("setup session not found", 404);
 
-    return c.text(renderTerminalSession(setupSessionWithProvenance(record)));
+    const session = setupSessionWithProvenance(record);
+    return c.text(
+      renderTerminalSession(session, {
+        actionBaseUrl: terminalSessionApiBaseUrl(publicOrigin, session.sessionId),
+        stepSubmissionBaseUrl: terminalSessionApiBaseUrl(publicOrigin, session.sessionId),
+        refreshUrl: terminalSessionRefreshUrl(publicOrigin, session.sessionId),
+        setupUrl: terminalSessionSetupUrl(publicOrigin, session.sessionId),
+      }),
+    );
   });
 
   app.post("/api/setup/sessions/:sessionId/farcaster/verify", async (c) => {
@@ -757,6 +789,215 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     return result;
   }
 
+  async function checkApplianceLaunchForSession(
+    sessionId: string,
+  ): Promise<ApplianceLaunchCheckResult> {
+    const record = sessions.get(sessionId);
+    if (!record) {
+      return {
+        ok: false,
+        status: 404,
+        error: "setup session not found",
+        message: "Setup session not found.",
+      };
+    }
+
+    const readiness = applianceLaunchReadiness(record.state);
+    if (!readiness.ok) return readiness;
+
+    try {
+      const result = await applianceLaunchProvider.verifyApplianceLaunch({
+        sessionId,
+        slug: record.state.reservedSlug!,
+        domain: record.state.domain!,
+        hostingMode: record.state.hostingMode!,
+      });
+      const updatedState = {
+        ...record.state,
+        applianceLaunched: true,
+        publishingVerified: undefined,
+        composerUnlocked: undefined,
+      };
+      const updatedRecord = withSetupEvent(
+        {
+          ...record,
+          state: updatedState,
+          updatedAt: new Date().toISOString(),
+        },
+        "appliance_launched",
+        {
+          actorFid: updatedState.hostFid,
+          data: {
+            slug: updatedState.reservedSlug,
+            domain: updatedState.domain,
+            checkedUrl: result.checkedUrl,
+          },
+        },
+      );
+
+      sessions.set(sessionId, updatedRecord);
+
+      return { ok: true, record: updatedRecord };
+    } catch (error) {
+      if (error instanceof ApplianceLaunchError) {
+        sessions.set(
+          sessionId,
+          withSetupEvent(
+            {
+              ...record,
+              updatedAt: new Date().toISOString(),
+            },
+            "appliance_launch_failed",
+            {
+              actorFid: record.state.hostFid,
+              data: { status: error.status },
+            },
+          ),
+        );
+
+        return {
+          ok: false,
+          status: error.status as 400 | 409 | 500 | 501 | 502,
+          error: "appliance launch verification failed",
+          message: error.message,
+        };
+      }
+
+      return {
+        ok: false,
+        status: 500,
+        error: "appliance launch verification failed",
+        message: "The setup broker could not verify the Arch appliance launch.",
+      };
+    }
+  }
+
+  async function verifyPublishingForSession(
+    sessionId: string,
+  ): Promise<PublishingVerificationActionResult> {
+    const record = sessions.get(sessionId);
+    if (!record) {
+      return {
+        ok: false,
+        status: 404,
+        error: "setup session not found",
+        message: "Setup session not found.",
+      };
+    }
+
+    const readiness = publishingVerificationReadiness(record.state);
+    if (!readiness.ok) return readiness;
+
+    try {
+      const result = await publishingVerificationProvider.verifyPublishing({
+        sessionId,
+        slug: record.state.reservedSlug!,
+        domain: record.state.domain!,
+        hostFid: record.state.hostFid!,
+        signerPublicKey: record.state.signerPublicKey,
+      });
+      const updatedState = {
+        ...record.state,
+        publishingVerified: true,
+        publishingProbeHash: result.farcasterHash,
+        publishingProbeCheckedUrl: result.checkedUrl,
+        composerUnlocked: undefined,
+      };
+      const updatedRecord = withSetupEvent(
+        {
+          ...record,
+          state: updatedState,
+          updatedAt: new Date().toISOString(),
+        },
+        "publishing_verified",
+        {
+          actorFid: updatedState.hostFid,
+          data: {
+            slug: updatedState.reservedSlug,
+            domain: updatedState.domain,
+            checkedUrl: result.checkedUrl,
+            farcasterHash: result.farcasterHash,
+          },
+        },
+      );
+
+      sessions.set(sessionId, updatedRecord);
+
+      return { ok: true, record: updatedRecord };
+    } catch (error) {
+      if (error instanceof PublishingVerificationError) {
+        sessions.set(
+          sessionId,
+          withSetupEvent(
+            {
+              ...record,
+              updatedAt: new Date().toISOString(),
+            },
+            "publishing_verification_failed",
+            {
+              actorFid: record.state.hostFid,
+              data: { status: error.status },
+            },
+          ),
+        );
+
+        return {
+          ok: false,
+          status: error.status as 400 | 409 | 500 | 501 | 502,
+          error: "publishing verification failed",
+          message: error.message,
+        };
+      }
+
+      return {
+        ok: false,
+        status: 500,
+        error: "publishing verification failed",
+        message: "The setup broker could not verify Farcaster publishing for this Arch.",
+      };
+    }
+  }
+
+  function unlockComposerForSession(sessionId: string): ComposerUnlockActionResult {
+    const record = sessions.get(sessionId);
+    if (!record) {
+      return {
+        ok: false,
+        status: 404,
+        error: "setup session not found",
+        message: "Setup session not found.",
+      };
+    }
+
+    const readiness = composerUnlockReadiness(record.state);
+    if (!readiness.ok) return readiness;
+
+    const updatedState = {
+      ...record.state,
+      composerUnlocked: true,
+    };
+    const updatedRecord = withSetupEvent(
+      {
+        ...record,
+        state: updatedState,
+        updatedAt: new Date().toISOString(),
+      },
+      "composer_unlocked",
+      {
+        actorFid: updatedState.hostFid,
+        data: {
+          slug: updatedState.reservedSlug,
+          domain: updatedState.domain,
+          farcasterHash: updatedState.publishingProbeHash,
+        },
+      },
+    );
+
+    sessions.set(sessionId, updatedRecord);
+
+    return { ok: true, record: updatedRecord };
+  }
+
   function activeActionForSession(
     sessionId: string,
     actionId: string,
@@ -815,6 +1056,12 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
         return provisionTunnelForSession(sessionId);
       case "export-arch-config":
         return exportArchConfigForSession(sessionId);
+      case "check-appliance-launch":
+        return checkApplianceLaunchForSession(sessionId);
+      case "verify-publishing":
+        return verifyPublishingForSession(sessionId);
+      case "unlock-composer":
+        return unlockComposerForSession(sessionId);
     }
   }
 
@@ -1039,7 +1286,12 @@ function sessionResponse(record: SetupSessionRecord, publicOrigin: string): Sess
 
   return {
     session,
-    terminal: renderTerminalSession(session),
+    terminal: renderTerminalSession(session, {
+      actionBaseUrl: terminalSessionApiBaseUrl(publicOrigin, state.sessionId),
+      stepSubmissionBaseUrl: terminalSessionApiBaseUrl(publicOrigin, state.sessionId),
+      refreshUrl: terminalSessionRefreshUrl(publicOrigin, state.sessionId),
+      setupUrl: terminalSessionSetupUrl(publicOrigin, state.sessionId),
+    }),
     setupUrl: `${publicOrigin}/setup/${state.sessionId}`,
     events: record.events,
     next: {
@@ -1053,6 +1305,18 @@ function sessionResponse(record: SetupSessionRecord, publicOrigin: string): Sess
         : "Verify a Sign In with Farcaster signature. Manual admin FID input is rejected.",
     },
   };
+}
+
+function terminalSessionApiBaseUrl(publicOrigin: string, sessionId: string): string {
+  return `${publicOrigin}/api/setup/sessions/${sessionId}`;
+}
+
+function terminalSessionRefreshUrl(publicOrigin: string, sessionId: string): string {
+  return `${terminalSessionApiBaseUrl(publicOrigin, sessionId)}/terminal`;
+}
+
+function terminalSessionSetupUrl(publicOrigin: string, sessionId: string): string {
+  return `${publicOrigin}/setup/${sessionId}`;
 }
 
 function setupSessionWithProvenance(record: SetupSessionRecord): SetupSession {
@@ -1110,7 +1374,12 @@ function stepIdForCompletionEvent(event: SetupAuditEvent): SetupStepId | undefin
       return isSetupStepId(event.data?.stepId) ? event.data.stepId : undefined;
     case "arch_config_exported":
     case "tunnel_provisioned":
+    case "appliance_launched":
       return "launch-appliance";
+    case "publishing_verified":
+      return "verify-publishing";
+    case "composer_unlocked":
+      return "unlock-arch";
     default:
       return undefined;
   }
@@ -1934,6 +2203,39 @@ type TunnelProvisioningReadiness =
       message: string;
     };
 
+type ApplianceLaunchReadiness =
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      status: 409;
+      error: string;
+      message: string;
+    };
+
+type PublishingVerificationReadiness =
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      status: 409;
+      error: string;
+      message: string;
+    };
+
+type ComposerUnlockReadiness =
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      status: 409;
+      error: string;
+      message: string;
+    };
+
 function tunnelProvisioningReadiness(state: SetupState): TunnelProvisioningReadiness {
   if (!state.hostFid) {
     return {
@@ -1978,6 +2280,131 @@ function tunnelProvisioningReadiness(state: SetupState): TunnelProvisioningReadi
       status: 409,
       error: "surface configuration required",
       message: "Configure the first visible community defaults before provisioning a tunnel.",
+    };
+  }
+
+  return { ok: true };
+}
+
+function applianceLaunchReadiness(state: SetupState): ApplianceLaunchReadiness {
+  if (!state.hostFid) {
+    return {
+      ok: false,
+      status: 409,
+      error: "farcaster verification required",
+      message:
+        "Appliance launch verification can only happen after the setup broker derives a host FID from Farcaster verification.",
+    };
+  }
+
+  if (!state.reservedSlug || !state.domain) {
+    return {
+      ok: false,
+      status: 409,
+      error: "arch hostname required",
+      message: "Reserve a verified arches.lat hostname before verifying appliance launch.",
+    };
+  }
+
+  if (!state.hostingMode || state.hostingMode === "local") {
+    return {
+      ok: false,
+      status: 409,
+      error: "public hosting required",
+      message: "Appliance launch verification requires a public hosting mode.",
+    };
+  }
+
+  if (!state.surfaceConfigured) {
+    return {
+      ok: false,
+      status: 409,
+      error: "surface configuration required",
+      message: "Configure the first visible community defaults before verifying appliance launch.",
+    };
+  }
+
+  if (state.hostingMode === "tunnel-local" && !state.tunnelProvisioned) {
+    return {
+      ok: false,
+      status: 409,
+      error: "tunnel route required",
+      message: "Provision the Cloudflare Tunnel route before verifying appliance launch.",
+    };
+  }
+
+  if (!state.archConfigExported) {
+    return {
+      ok: false,
+      status: 409,
+      error: "arch config export required",
+      message: "Export the non-secret Arch config before verifying appliance launch.",
+    };
+  }
+
+  return { ok: true };
+}
+
+function publishingVerificationReadiness(
+  state: SetupState,
+): PublishingVerificationReadiness {
+  if (!state.hostFid) {
+    return {
+      ok: false,
+      status: 409,
+      error: "farcaster verification required",
+      message:
+        "Publishing verification can only happen after the setup broker derives a host FID from Farcaster verification.",
+    };
+  }
+
+  if (!state.signerApproved) {
+    return {
+      ok: false,
+      status: 409,
+      error: "signer approval required",
+      message:
+        "Publishing verification can only happen after the host approves an Arch signer.",
+    };
+  }
+
+  if (!state.reservedSlug || !state.domain) {
+    return {
+      ok: false,
+      status: 409,
+      error: "arch hostname required",
+      message: "Reserve a verified arches.lat hostname before verifying publishing.",
+    };
+  }
+
+  if (!state.applianceLaunched) {
+    return {
+      ok: false,
+      status: 409,
+      error: "appliance launch required",
+      message: "Verify the public Arch appliance launch before verifying publishing.",
+    };
+  }
+
+  return { ok: true };
+}
+
+function composerUnlockReadiness(state: SetupState): ComposerUnlockReadiness {
+  if (!state.publishingVerified) {
+    return {
+      ok: false,
+      status: 409,
+      error: "publishing verification required",
+      message: "The composer can only unlock after Farcaster publishing has been verified.",
+    };
+  }
+
+  if (!state.publishingProbeHash) {
+    return {
+      ok: false,
+      status: 409,
+      error: "publishing proof required",
+      message: "The composer can only unlock after a Farcaster publishing proof is recorded.",
     };
   }
 
@@ -2183,6 +2610,44 @@ async function renderSetupHtml(
       max-width: 680px;
     }
 
+    .step-context {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin: 20px 0 0;
+    }
+
+    .step-context-item {
+      min-height: 72px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      background: #fafafa;
+    }
+
+    .step-context-item.current {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .step-context-label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+      text-transform: uppercase;
+    }
+
+    .step-context-title {
+      margin-top: 4px;
+      font-weight: 650;
+    }
+
+    .step-context-meta {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
     .fields {
       display: grid;
       gap: 18px;
@@ -2323,6 +2788,12 @@ async function renderSetupHtml(
       margin-top: 24px;
     }
 
+    .action-desc {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
     button {
       min-height: 38px;
       border: 0;
@@ -2353,6 +2824,7 @@ async function renderSetupHtml(
       }
       section { padding: 24px 20px; }
       .surface { padding: 20px; }
+      .step-context { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -2373,9 +2845,8 @@ async function renderSetupHtml(
       ${
         currentStep
           ? await renderCurrentStep(
-              session.sessionId,
+              session,
               currentStep,
-              session.steps.length,
               shouldPollFarcaster,
             )
           : ""
@@ -2520,12 +2991,21 @@ function renderSetupSummary(session: SetupSession): string {
 function renderProgressStep(step: SetupStep): string {
   return `<li class="step ${escapeHtml(step.status)}">
     <span class="marker">${escapeHtml(progressMarker(step))}</span>
-    <span class="step-title">
-      <span>${escapeHtml(step.title)}</span>
-      <span class="step-meta">${escapeHtml(step.icon ?? step.id)}</span>
-      ${renderStepProof(step)}
-    </span>
+      <span class="step-title">
+        <span>${escapeHtml(step.title)}</span>
+        <span class="step-meta">${escapeHtml(step.icon ?? step.id)}</span>
+        ${renderStepStatusReason(step)}
+        ${renderStepProof(step)}
+      </span>
   </li>`;
+}
+
+function renderStepStatusReason(step: SetupStep): string {
+  if (!step.statusReason || (step.status !== "pending" && step.status !== "blocked")) {
+    return "";
+  }
+
+  return `<span class="step-proof">${escapeHtml(step.statusReason)}</span>`;
 }
 
 function renderStepProof(step: SetupStep): string {
@@ -2560,6 +3040,7 @@ function eventDetail(event: SetupAuditEvent): string {
   const domain = event.data?.domain ? ` ${event.data.domain}` : "";
   const step = event.data?.stepId ? ` ${event.data.stepId}` : "";
   const count = event.data?.channelCount !== undefined ? ` ${event.data.channelCount}` : "";
+  const hash = event.data?.farcasterHash ? ` ${event.data.farcasterHash}` : "";
 
   switch (event.type) {
     case "session_created":
@@ -2586,30 +3067,46 @@ function eventDetail(event: SetupAuditEvent): string {
       return `${actor} tunnel provisioning failed`;
     case "arch_config_exported":
       return `${actor} exported${domain} config`;
+    case "appliance_launched":
+      return `${actor} verified${domain} appliance launch`;
+    case "appliance_launch_failed":
+      return `${actor} appliance launch verification failed`;
+    case "publishing_verified":
+      return `${actor} verified Farcaster publishing${hash}`;
+    case "publishing_verification_failed":
+      return `${actor} publishing verification failed`;
+    case "composer_unlocked":
+      return `${actor} unlocked${domain} composer`;
+    default:
+      return `${actor} recorded ${event.type}`;
   }
 }
 
 async function renderCurrentStep(
-  sessionId: string,
+  session: SetupSession,
   step: SetupStep,
-  totalSteps: number,
   shouldPollFarcaster = false,
 ): Promise<string> {
-  const canSubmit = isSubmittableStep(step);
+  const sessionId = session.sessionId;
+  const canSubmit = Boolean(step.submit && !step.submit.disabled);
   const fields = await Promise.all(step.fields.map((field) => renderField(field, canSubmit)));
   const fieldMarkup = `<div class="fields">
         ${fields.join("")}
       </div>`;
 
   return `<div class="surface step-surface-${escapeHtml(step.id)}">
-    <div class="surface-kicker">Step ${escapeHtml(String(step.displayIndex))} of ${escapeHtml(String(totalSteps))}</div>
+    <div class="surface-kicker">Step ${escapeHtml(String(step.displayIndex))} of ${escapeHtml(String(session.steps.length))}</div>
     <h2>${escapeHtml(step.title)}</h2>
     <p class="description">${escapeHtml(step.description)}</p>
+    ${renderStepContext(session, step)}
     ${
       canSubmit
-        ? `<form method="post" action="/setup/${escapeHtml(sessionId)}/steps/${escapeHtml(step.id)}">
+        ? `<form method="post" action="/setup/${escapeHtml(sessionId)}/${escapeHtml(step.submit!.path)}">
       ${fieldMarkup}
-      <div class="actions"><button type="submit">Continue</button></div>
+      <div class="actions">
+        ${step.submit!.description ? `<span class="action-description">${escapeHtml(step.submit!.description)}</span>` : ""}
+        <button type="submit">${escapeHtml(step.submit!.label)}</button>
+      </div>
     </form>`
         : fieldMarkup
     }
@@ -2622,6 +3119,37 @@ async function renderCurrentStep(
   </div>`;
 }
 
+function renderStepContext(session: SetupSession, currentStep: SetupStep): string {
+  const previousStep = currentStep.previousStepId
+    ? session.steps.find((step) => step.id === currentStep.previousStepId)
+    : undefined;
+  const nextStep = currentStep.nextStepId
+    ? session.steps.find((step) => step.id === currentStep.nextStepId)
+    : undefined;
+
+  return `<div class="step-context" aria-label="Setup step context">
+    ${renderStepContextItem("Previous", previousStep)}
+    ${renderStepContextItem("Current", currentStep, true)}
+    ${renderStepContextItem("Next", nextStep)}
+  </div>`;
+}
+
+function renderStepContextItem(
+  label: string,
+  step: SetupStep | undefined,
+  current = false,
+): string {
+  const title = step?.title ?? "None";
+  const meta = step ? `${step.displayIndex}. ${step.status}` : "";
+  const currentClass = current ? " current" : "";
+
+  return `<div class="step-context-item${currentClass}">
+    <div class="step-context-label">${escapeHtml(label)}</div>
+    <div class="step-context-title">${escapeHtml(title)}</div>
+    ${meta ? `<div class="step-context-meta">${escapeHtml(meta)}</div>` : ""}
+  </div>`;
+}
+
 function renderStepActions(sessionId: string, step: SetupStep): string {
   const actions = step.actions ?? [];
   if (actions.length === 0) return "";
@@ -2631,6 +3159,7 @@ function renderStepActions(sessionId: string, step: SetupStep): string {
       const disabled = action.disabled ? " disabled" : "";
       return `<form class="actions" method="${escapeHtml(action.method)}" action="/setup/${escapeHtml(sessionId)}/${escapeHtml(action.path)}">
       <button type="submit"${disabled}>${escapeHtml(action.label)}</button>
+      ${action.description ? `<p class="action-desc">${escapeHtml(action.description)}</p>` : ""}
     </form>`;
     })
     .join("");
@@ -2815,13 +3344,6 @@ function renderFieldError(field: SetupField): string {
   return field.errorDescription
     ? `<div class="field-error">${escapeHtml(field.errorDescription)}</div>`
     : "";
-}
-
-function isSubmittableStep(step: SetupStep): boolean {
-  if (step.status !== "active") return false;
-  return step.fields.some(
-    (field) => field.type === "text" || field.type === "radio" || field.type === "dropdown",
-  );
 }
 
 function requiredLabel(field: SetupField): string {

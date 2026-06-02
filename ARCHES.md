@@ -71,18 +71,17 @@ curl -fsSL https://install.arches.lat | bash
 That command should:
 
 1. Start a setup session.
-2. Generate or prepare a local signer for the appliance.
-3. Show a Farcaster QR code.
-4. Let the user approve the signer from a Farcaster client.
-5. Derive the host FID from that approval.
-6. Query the Farcaster channels that host FID can lead or moderate.
-7. Show those communities in the terminal and browser setup page.
-8. Let the user choose one eligible community.
-9. Reserve a hostname such as `anky.arches.lat`.
-10. Provision a Cloudflare Tunnel route for that hostname.
-11. Render the appliance config and start Docker services.
-12. Run a Farcaster publishing probe through Hypersnap Lite.
-13. Enable posting only after publishing is verified.
+2. Show a Farcaster QR code.
+3. Derive the host FID from the signed session proof.
+4. Request or prepare a signer approved by that host FID.
+5. Query the Farcaster channels that host FID can lead or moderate.
+6. Show those communities in the terminal and browser setup page.
+7. Let the user choose one eligible community.
+8. Reserve a hostname such as `anky.arches.lat`.
+9. Provision a Cloudflare Tunnel route for that hostname.
+10. Render the appliance config and start Docker services.
+11. Run a Farcaster publishing probe through Hypersnap Lite.
+12. Enable posting only after publishing is verified.
 
 The person running the command holds the community up. Arches helps them spawn
 the home, but Arches is not the home.
@@ -201,6 +200,40 @@ managed hosting. Its code-level setup model reinforces the same lesson: a
 community product needs a durable setup boundary, not a decorative onboarding
 screen.
 
+## Discourse UI Model To Migrate
+
+The useful Discourse UI pattern is a server-defined wizard that makes
+community creation feel calm, bounded, and resumable.
+
+Arches should preserve these mechanics:
+
+- The server defines the current step, fields, choices, validation, actions,
+  and completion state.
+- The UI renders generic fields instead of hardcoding setup order or inventing
+  unlock states.
+- The current step is the only step that can mutate setup state.
+- Every completed step writes a durable artifact or verified fact.
+- Every important side effect leaves an audit event.
+- Setup resumes at the first incomplete step.
+- Normal product UI unlocks only after setup proof exists.
+- Later providers can extend setup without replacing the whole flow.
+
+Arches should translate the feeling, not the forum model:
+
+```text
+Discourse setup wizard -> Arches setup broker
+admin account          -> verified Farcaster host FID
+site settings          -> appliance env and Arch config
+category creation      -> channel-backed Arch selection
+staff action log       -> setup audit and provenance events
+normal forum unlock    -> composer unlock after Farcaster publish proof
+```
+
+This is why the terminal and browser setup page must render the same
+server-owned schema. The terminal can stay terse and the browser can be more
+visual, but neither should ask for manual FID ownership, channel ownership, or
+posting readiness.
+
 ## The Arches Opportunity
 
 Discourse made standalone communities durable on the web. Farcaster makes
@@ -283,9 +316,16 @@ Implemented scaffolding in this repo:
 - server-derived setup summary/readiness rendering
 - versioned setup-session serialization with broker created/updated timestamps
 - generic current-step setup updater for schema-backed fields
+- server-owned submit metadata for active field-backed setup steps
+- server-owned status reasons for pending and blocked setup steps
 - Discourse-style setup step metadata, browser progress, step actions, and
   field-error rendering
 - generic setup action controller gated by the current active schema step
+- terminal action command rendering for the same schema-defined broker actions
+- terminal field submission command rendering for the same schema-defined
+  setup steps
+- terminal refresh command rendering for the same setup session
+- terminal browser handoff URL rendering for the same setup session
 - Farcaster verification provider boundary with per-session nonce/domain
   challenge
 - optional official Farcaster auth-client SIWF verifier
@@ -302,10 +342,18 @@ Implemented scaffolding in this repo:
 - optional Neynar channel eligibility adapter
 - browser channel refresh action for verified host FID eligibility
 - browser tunnel provisioning action for the launch step
+- appliance launch verification provider boundary and browser action
+- publishing verification provider boundary and browser action
+- API publishing probe endpoint that returns `501` until Hypersnap Lite is
+  wired
+- composer unlock action gated on recorded Farcaster publishing proof
+- web composer lock derived from API publishing state
 - in-memory eligible-channel slug reservation scaffold
 - injectable in-memory setup store adapter boundary for sessions, reservations,
   and signer request tokens
 - sanitized setup store snapshot boundary that drops volatile delivery fields
+- optional sanitized JSON-file setup store for sessions, reservations, and
+  audit events
 - dev-only sanitized setup store snapshot endpoint
 
 Not implemented yet:
@@ -313,10 +361,11 @@ Not implemented yet:
 - production SIWF recovery, timeout, and mobile handoff UX
 - production signer request provider and appliance-side signer storage
 - production-authenticated Cloudflare Tunnel provisioning behind the broker
-- persistent setup sessions, audit events, and reservations
-- production channel-selection terminal UI
+- production database store for setup sessions, audit events, and reservations
+- polished production terminal interaction for channel selection and setup
+  submissions
 - Hypersnap Lite publishing contract
-- publish probe and composer unlock
+- successful publish probe against a real Hypersnap Lite/Farcaster write path
 - confirmed Arch feed persistence from Farcaster-published casts
 - wildcard production routing for all unclaimed subdomains
 

@@ -4,6 +4,11 @@ This is the first broker scaffold for the Discourse-inspired Arches setup flow.
 It creates setup sessions and returns the shared setup schema plus terminal
 rendering from `packages/setup-schema`.
 
+The broker should follow `docs/SETUP_CONTRACT.md`: only the current active
+server-defined step can advance, provider-backed actions must fail closed until
+real proof exists, and composer unlock is forbidden until Farcaster publishing
+through Hypersnap Lite is verified.
+
 The broker has a Farcaster verification provider boundary. The default provider
 returns `501`, but the public API already rejects manual `fid`, `hostFid`, and
 `adminFid` claims.
@@ -62,6 +67,28 @@ Render terminal output:
 ```bash
 curl -fsSL http://localhost:3020/api/setup/sessions/SESSION_ID/terminal
 ```
+
+The rendered terminal output includes this same command as `Refresh`, so a host
+can rerender the current incomplete step after running an action or submit
+command without creating a new setup session.
+It also includes `Browser setup` for the same session, so a terminal host can
+move into the browser wizard at any point without losing setup state.
+
+It also renders the same previous/current/next step context as the browser
+wizard, using the server-owned schema metadata instead of terminal-specific
+state.
+
+When the current step exposes provider-backed actions, this terminal output now
+includes exact `curl -X POST` commands for the generic action endpoint. Those
+commands are generated from the same server-owned schema actions that the
+browser wizard renders as buttons.
+
+When the current step exposes schema fields, terminal output also includes an
+exact JSON `curl` template for the generic step endpoint. Steps with
+server-derived defaults, such as hostname reservation and hosting mode, render
+those defaults directly. Choice steps, such as channel selection, keep a
+placeholder so the host chooses deliberately. The endpoint path and label come
+from the schema's `submit` metadata, not from terminal-specific inference.
 
 Poll a Farcaster auth channel:
 
@@ -143,10 +170,17 @@ browser submits those buttons to `/setup/:sessionId/actions/:actionId`; the
 broker validates that the action belongs to the current active step before
 running the underlying provider operation.
 
+The current-step surface also renders a compact previous/current/next context
+from the server schema. This mirrors the useful part of Discourse's wizard UI:
+the browser can feel guided without becoming the source of setup order,
+completion state, or permissions.
+
 The session response includes a server-derived setup summary with readiness,
 progress count, blocked step count, current step title, and next action. The
 terminal renderer and browser sidebar both display that summary so the host can
-see setup status without reading the whole schema.
+see setup status without reading the whole schema. The next action is concrete
+when possible: scan the QR, run the active provider action, submit the active
+field step, or stop at a blocked/completed state.
 
 When browser form validation fails, the broker re-renders the same setup session
 with field-level error descriptions instead of sending the host to a generic
@@ -154,7 +188,7 @@ error page. JSON API callers still receive the normal structured error response.
 
 ## Setup Audit Events
 
-The broker records an in-memory audit trail for each setup session:
+The broker records an audit trail for each setup session:
 
 ```bash
 curl -fsSL http://localhost:3020/api/setup/sessions/SESSION_ID/events
@@ -162,14 +196,16 @@ curl -fsSL http://localhost:3020/api/setup/sessions/SESSION_ID/events
 
 Events are also included in the normal session response and rendered as a
 compact setup log in the browser setup sidebar. Current events include session
-creation, Farcaster verification, channel refresh, step submission, slug
-reservation, tunnel provisioning, tunnel provisioning failure, and local
-dev-state mutation.
+creation, Farcaster verification, signer request/approval, channel refresh,
+step submission, slug reservation, tunnel provisioning, tunnel provisioning
+failure, Arch config export, appliance launch verification, publishing
+verification, composer unlock, and local dev-state mutation.
 
 This mirrors the useful Discourse pattern where wizard updates are logged by the
-server after the step succeeds. The scaffold is intentionally in-memory for now;
-production storage should make these events durable and queryable by session,
-host FID, Arch slug, and domain.
+server after the step succeeds. The default store is process-local. The
+opt-in JSON-file store persists sanitized session facts, reservations, and audit
+events. Production storage should make these events durable and queryable by
+session, host FID, Arch slug, and domain.
 
 The in-memory session, slug reservation, and signer request token maps now sit
 behind an injectable setup store boundary in `src/setup-store.ts`.
@@ -178,16 +214,31 @@ future durable adapter can replace the process-local store without changing the
 wizard routes or action handlers.
 
 Setup session responses include `schemaVersion`, `createdAt`, and `updatedAt`.
-That gives future durable storage a migration and recovery hook. Raw file
-persistence is still intentionally not enabled, because current setup state can
+That gives durable storage a migration and recovery hook. Raw session
+persistence is intentionally not enabled, because current setup state can
 include short-lived delivery fields such as generated installer commands.
 
 The store boundary also has a snapshot helper plus an Arches-specific session
 sanitizer. Durable snapshots can keep session facts, reservations, and audit
 events while dropping signer request tokens, Farcaster relay channel tokens,
 signer request URLs, generated install commands, and generated env output. This
-is the safe persistence boundary to preserve before adding a real disk or
-database adapter.
+is the safe persistence boundary used by the JSON-file store and to preserve in
+a future database adapter.
+
+For an opt-in durable local store, set:
+
+```bash
+ARCHES_SETUP_STORE_FILE=/var/lib/arches/setup-store.json \
+bun run src/index.ts
+```
+
+This JSON-file store persists sanitized setup sessions, slug reservations, and
+setup audit events. It does not persist signer request tokens, Farcaster relay
+channel tokens, signer request URLs, generated install commands, generated env
+output, tunnel tokens, API tokens, mnemonic material, or private signer
+material. Use it as a small deployment persistence primitive, not as a secret
+backup. After restart, the broker can reload those sanitized events and derive
+completed-step provenance for the setup session again.
 
 For local development only, enable `ARCHES_SETUP_BROKER_DEV=1` and inspect the
 sanitized snapshot with:
@@ -244,11 +295,42 @@ for the tunnel token until a safer installer handoff is implemented.
 
 The browser launch step exposes provider-backed actions from the setup schema.
 For `tunnel-local`, it first renders `Provision tunnel`; after the tunnel is
-ready, it renders `Export Arch config`. When the host exports config, the broker
-logs `arch_config_exported`, stores the non-secret env block on the setup
-session, and re-renders it as a copy field inside the launch step. If earlier
-setup choices change, that exported env block is cleared and must be
-regenerated.
+ready, it renders `Export Arch config`; after non-secret config is exported, it
+renders `Check appliance launch`. When the host exports config, the broker logs
+`arch_config_exported`, stores the non-secret env block on the setup session,
+and re-renders it as a copy field inside the launch step. If earlier setup
+choices change, that exported env block is cleared and must be regenerated.
+
+Enable public appliance launch checks with:
+
+```bash
+ARCHES_APPLIANCE_LAUNCH_PROVIDER=http-health \
+bun run src/index.ts
+```
+
+The provider checks `https://<arch-domain>/health` and requires an `{"ok":true}`
+response before marking `launch-appliance` complete. The default provider fails
+closed with `501`, and the check does not verify publishing or unlock the
+composer.
+
+After appliance launch is verified, the setup schema renders `Verify
+publishing`. Enable the broker-side probe with:
+
+```bash
+ARCHES_PUBLISHING_VERIFICATION_PROVIDER=http-probe \
+bun run src/index.ts
+```
+
+The provider calls `https://<arch-domain>/api/publishing/probe` and only marks
+publishing verified when the appliance returns confirmed Farcaster proof:
+`ok: true`, `protocol: "farcaster"`, `status: "confirmed"`, and a
+`farcasterHash`. The current API endpoint intentionally returns `501` until
+Hypersnap Lite publishing is wired.
+
+After publishing is verified, the setup schema renders `Unlock composer`.
+That action records `composer_unlocked` only when the setup session already has
+both `publishingVerified` and a Farcaster proof hash. It completes the setup
+session, but it does not bypass the appliance/API publishing checks.
 
 The configure step follows the Discourse category-setup idea of choosing the
 kind of space first. Arches currently exposes server-defined choices for surface

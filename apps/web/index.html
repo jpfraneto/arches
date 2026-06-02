@@ -432,12 +432,6 @@
         });
       });
 
-      Promise.all([loadArch(), loadFeed()]).catch(() => {
-        feed.innerHTML = '<p class="error">Could not connect to the Arches API.</p>';
-      });
-    </script>
-  </body>
-</html>
       function setComposerAvailability() {
         const enabled = Boolean(state.arch?.publishing?.farcaster?.enabled);
         const controls = form.querySelectorAll("textarea, input, button");
@@ -459,3 +453,10 @@
         composerStatus.className = "composer-status";
         composerStatus.textContent = "";
       }
+
+      Promise.all([loadArch(), loadFeed()]).catch(() => {
+        feed.innerHTML = '<p class="error">Could not connect to the Arches API.</p>';
+      });
+    </script>
+  </body>
+</html>

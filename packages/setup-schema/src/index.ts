@@ -32,10 +32,21 @@ export type SetupStepActionId =
   | "check-signer-approval"
   | "refresh-eligible-channels"
   | "provision-tunnel"
-  | "export-arch-config";
+  | "export-arch-config"
+  | "check-appliance-launch"
+  | "verify-publishing"
+  | "unlock-composer";
 
 export type SetupStepAction = {
   id: SetupStepActionId;
+  label: string;
+  method: "post";
+  path: string;
+  description?: string;
+  disabled?: boolean;
+};
+
+export type SetupStepSubmit = {
   label: string;
   method: "post";
   path: string;
@@ -60,6 +71,7 @@ export type SetupStep = {
   title: string;
   description: string;
   status: StepStatus;
+  statusReason?: string;
   index: number;
   displayIndex: number;
   previousStepId?: SetupStepId;
@@ -70,6 +82,7 @@ export type SetupStep = {
   completionEventId?: string;
   completionEventType?: string;
   actions?: SetupStepAction[];
+  submit?: SetupStepSubmit;
   fields: SetupField[];
 };
 
@@ -110,6 +123,8 @@ export type SetupState = {
   archConfigExported?: boolean;
   archConfigEnv?: string;
   publishingVerified?: boolean;
+  publishingProbeHash?: string;
+  publishingProbeCheckedUrl?: string;
   composerUnlocked?: boolean;
 };
 
@@ -144,6 +159,10 @@ export type ValidationError = {
 
 export type TerminalRenderOptions = {
   includePendingSteps?: boolean;
+  actionBaseUrl?: string;
+  stepSubmissionBaseUrl?: string;
+  refreshUrl?: string;
+  setupUrl?: string;
 };
 
 type SetupStepDraft = Omit<SetupStep, "index" | "displayIndex" | "previousStepId" | "nextStepId">;
@@ -272,22 +291,90 @@ function buildSetupSummary(
     totalStepCount: steps.length,
     blockedStepCount,
     currentStepTitle: currentStep?.title ?? currentStepId,
-    nextAction: completed
-      ? "Setup is complete."
-      : currentStep?.status === "blocked"
-        ? `${currentStep.title} is blocked.`
-        : `Continue with ${currentStep?.title ?? currentStepId}.`,
+    nextAction: buildNextAction(currentStep, completed),
   };
 }
 
+function buildNextAction(currentStep: SetupStep | undefined, completed: boolean): string {
+  if (completed) return "Setup is complete.";
+  if (!currentStep) return "Continue setup.";
+  if (currentStep.status === "blocked") return `${currentStep.title} is blocked.`;
+
+  if (currentStep.submit && !currentStep.submit.disabled) {
+    return `Submit ${currentStep.title}.`;
+  }
+
+  const action = currentStep.actions?.find((candidate) => !candidate.disabled);
+  if (action) return `${action.label}.`;
+
+  const qrField = currentStep.fields.find((field) => field.type === "qr");
+  if (qrField) {
+    return `Scan ${qrField.label}.`;
+  }
+
+  return `Continue with ${currentStep.title}.`;
+}
+
+function hasReadySubmitFields(step: SetupStep): boolean {
+  return step.fields.some((field) => {
+    if (field.type === "text") return true;
+    if (field.type !== "radio" && field.type !== "dropdown") return false;
+    return (field.choices ?? []).some((choice) => !choice.disabled);
+  });
+}
+
 function withWizardStepMetadata(steps: SetupStepDraft[]): SetupStep[] {
-  return steps.map((step, index) => ({
-    ...step,
-    index,
-    displayIndex: index + 1,
-    previousStepId: steps[index - 1]?.id,
-    nextStepId: steps[index + 1]?.id,
-  }));
+  return steps.map((step, index) => {
+    const stepWithMetadata = {
+      ...step,
+      index,
+      displayIndex: index + 1,
+      previousStepId: steps[index - 1]?.id,
+      nextStepId: steps[index + 1]?.id,
+    };
+
+    return {
+      ...stepWithMetadata,
+      submit: buildStepSubmit(stepWithMetadata),
+      statusReason: stepWithMetadata.statusReason ?? buildStepStatusReason(stepWithMetadata),
+    };
+  });
+}
+
+function buildStepStatusReason(step: SetupStep): string | undefined {
+  if (step.status === "completed" || step.status === "active") return undefined;
+
+  switch (step.id) {
+    case "verify-farcaster":
+      return undefined;
+    case "prepare-signer":
+      return "Verify Farcaster before preparing an Arch signer.";
+    case "choose-community":
+      return "Approve an Arch signer before choosing a community.";
+    case "name-surface":
+      return "Choose an eligible Farcaster channel before reserving a hostname.";
+    case "choose-hosting":
+      return "Reserve the Arch hostname before choosing hosting.";
+    case "configure-surface":
+      return "Choose hosting before configuring the surface.";
+    case "launch-appliance":
+      return "Configure the surface before launching the appliance.";
+    case "verify-publishing":
+      return "Launch the appliance before verifying Farcaster publishing.";
+    case "unlock-arch":
+      return "Verify Farcaster publishing before unlocking the composer.";
+  }
+}
+
+function buildStepSubmit(step: SetupStep): SetupStepSubmit | undefined {
+  if (step.status !== "active" || !hasReadySubmitFields(step)) return undefined;
+
+  return {
+    label: "Continue",
+    method: "post",
+    path: `steps/${step.id}`,
+    description: `Submit ${step.title} through the current-step updater.`,
+  };
 }
 
 export function findStep(session: SetupSession, stepId: SetupStepId): SetupStep | undefined {
@@ -372,6 +459,9 @@ export function renderTerminalSession(
     `Progress: ${session.summary.completedStepCount}/${session.summary.totalStepCount} steps complete`,
     `Readiness: ${session.summary.readiness}`,
     `Next: ${session.summary.nextAction}`,
+    `Step context: ${renderTerminalStepContext(session, currentStep)}`,
+    ...(options.refreshUrl ? [`Refresh: curl -fsSL ${options.refreshUrl}`] : []),
+    ...(options.setupUrl ? [`Browser setup: ${options.setupUrl}`] : []),
     "",
     ...session.steps
       .filter((step) => includePendingSteps || step.status !== "pending")
@@ -379,10 +469,26 @@ export function renderTerminalSession(
   ];
 
   if (currentStep) {
-    lines.push("", renderTerminalStep(currentStep));
+    lines.push("", renderTerminalStep(currentStep, options));
   }
 
   return lines.join("\n");
+}
+
+function renderTerminalStepContext(
+  session: SetupSession,
+  currentStep: SetupStep | undefined,
+): string {
+  if (!currentStep) return "Unknown";
+
+  const previousStep = currentStep.previousStepId
+    ? findStep(session, currentStep.previousStepId)
+    : undefined;
+  const nextStep = currentStep.nextStepId
+    ? findStep(session, currentStep.nextStepId)
+    : undefined;
+
+  return `${previousStep?.title ?? "None"} -> ${currentStep.title} -> ${nextStep?.title ?? "None"}`;
 }
 
 function renderTerminalStepLine(step: SetupStep): string {
@@ -390,10 +496,17 @@ function renderTerminalStepLine(step: SetupStep): string {
     step.completedAt && step.completionEventType
       ? ` (${step.completionEventType} at ${step.completedAt})`
       : "";
-  return `${terminalStatusMarker(step.status)} ${step.title}${provenance}`;
+  const reason =
+    step.statusReason && (step.status === "pending" || step.status === "blocked")
+      ? ` - ${step.statusReason}`
+      : "";
+  return `${terminalStatusMarker(step.status)} ${step.title}${provenance}${reason}`;
 }
 
-export function renderTerminalStep(step: SetupStep): string {
+export function renderTerminalStep(
+  step: SetupStep,
+  options: Pick<TerminalRenderOptions, "actionBaseUrl" | "stepSubmissionBaseUrl"> = {},
+): string {
   const lines = [`${step.title}`, step.description];
 
   for (const field of step.fields) {
@@ -406,10 +519,65 @@ export function renderTerminalStep(step: SetupStep): string {
       const disabled = action.disabled ? " (disabled)" : "";
       lines.push(`  - ${action.label}${disabled}`);
       if (action.description) lines.push(`    ${action.description}`);
+      if (!action.disabled && options.actionBaseUrl) {
+        lines.push(`    Command: curl -fsSL -X POST ${terminalActionUrl(options.actionBaseUrl, action)}`);
+      }
     }
   }
 
+  const submitCommand = terminalStepSubmitCommand(step, options.stepSubmissionBaseUrl);
+  if (submitCommand) {
+    lines.push("", "Submit:");
+    if (step.submit?.description) lines.push(`  ${step.submit.description}`);
+    lines.push(...submitCommand.map((line) => `  ${line}`));
+  }
+
   return lines.join("\n");
+}
+
+function terminalActionUrl(actionBaseUrl: string, action: SetupStepAction): string {
+  const base = actionBaseUrl.replace(/\/+$/, "");
+  const path = action.path.replace(/^\/+/, "");
+  return `${base}/${path}`;
+}
+
+function terminalStepSubmitCommand(
+  step: SetupStep,
+  stepSubmissionBaseUrl: string | undefined,
+): string[] | undefined {
+  if (!stepSubmissionBaseUrl || !step.submit || step.submit.disabled) return undefined;
+
+  const fields = step.fields.filter((field) =>
+    field.type === "text" || field.type === "radio" || field.type === "dropdown",
+  );
+  if (fields.length === 0) return undefined;
+
+  const body = fields.reduce<Record<string, string>>((values, field) => {
+    values[field.id] = terminalFieldSubmitValue(field);
+    return values;
+  }, {});
+  const base = stepSubmissionBaseUrl.replace(/\/+$/, "");
+  const path = step.submit.path.replace(/^\/+/, "");
+
+  return [
+    `curl -fsSL -X POST ${base}/${path} \\`,
+    `  -H 'content-type: application/json' \\`,
+    `  --data '${terminalJsonBody(body)}'`,
+  ];
+}
+
+function terminalFieldSubmitValue(field: SetupField): string {
+  if (field.value) return field.value;
+
+  if (field.type === "radio" || field.type === "dropdown") {
+    return `<${field.id}>`;
+  }
+
+  return field.placeholder ? `<${field.placeholder}>` : `<${field.id}>`;
+}
+
+function terminalJsonBody(values: Record<string, string>): string {
+  return JSON.stringify(values).replace(/'/g, "'\\''");
 }
 
 function verifyFarcasterStep(state: SetupState): SetupStepDraft {
@@ -645,6 +813,7 @@ function configureSurfaceStep(state: SetupState): SetupStepDraft {
 function launchApplianceStep(state: SetupState): SetupStepDraft {
   const status = statusAfter(Boolean(state.surfaceConfigured), Boolean(state.applianceLaunched));
   const needsTunnel = state.hostingMode === "tunnel-local" && !state.tunnelProvisioned;
+  const needsConfigExport = !state.archConfigExported;
 
   return {
     id: "launch-appliance",
@@ -663,13 +832,22 @@ function launchApplianceStep(state: SetupState): SetupStepDraft {
                   path: "actions/provision-tunnel",
                   description: "Create the Cloudflare Tunnel route for this Arch hostname.",
                 }
-              : {
-                  id: "export-arch-config",
-                  label: "Export Arch config",
-                  method: "post",
-                  path: "actions/export-arch-config",
-                  description: "Render the non-secret appliance config from verified setup state.",
-                },
+              : needsConfigExport
+                ? {
+                    id: "export-arch-config",
+                    label: "Export Arch config",
+                    method: "post",
+                    path: "actions/export-arch-config",
+                    description: "Render the non-secret appliance config from verified setup state.",
+                  }
+                : {
+                    id: "check-appliance-launch",
+                    label: "Check appliance launch",
+                    method: "post",
+                    path: "actions/check-appliance-launch",
+                    description:
+                      "Confirm the public Arch appliance health endpoint is reachable before publishing verification.",
+                  },
           ]
         : undefined,
     fields: [
@@ -704,19 +882,36 @@ function launchApplianceStep(state: SetupState): SetupStepDraft {
 }
 
 function verifyPublishingStep(state: SetupState): SetupStepDraft {
+  const status = statusAfter(Boolean(state.applianceLaunched), Boolean(state.publishingVerified));
+
   return {
     id: "verify-publishing",
     title: "Verify Publishing",
     description: "Confirm Hypersnap Lite can publish Farcaster data for this Arch.",
-    status: statusAfter(Boolean(state.applianceLaunched), Boolean(state.publishingVerified)),
+    status,
     icon: "protocol",
+    actions:
+      status === "active"
+        ? [
+            {
+              id: "verify-publishing",
+              label: "Verify publishing",
+              method: "post",
+              path: "actions/verify-publishing",
+              description:
+                "Run the appliance publishing probe and require Farcaster proof before composer unlock.",
+            },
+          ]
+        : undefined,
     fields: [
       {
         id: "publishing",
         type: "status",
         label: "Farcaster publishing",
         value: state.publishingVerified ? "verified" : "waiting",
-        description: "Posting stays disabled until this check passes.",
+        description: state.publishingProbeHash
+          ? `Verified Farcaster probe ${state.publishingProbeHash}.`
+          : "Posting stays disabled until this check passes.",
       },
     ],
   };
@@ -732,6 +927,19 @@ function unlockArchStep(state: SetupState): SetupStepDraft {
     description: "Enable the composer and show the live community surface.",
     status: canUnlock ? (unlocked ? "completed" : "active") : "blocked",
     icon: "composer",
+    actions:
+      canUnlock && !unlocked
+        ? [
+            {
+              id: "unlock-composer",
+              label: "Unlock composer",
+              method: "post",
+              path: "actions/unlock-composer",
+              description:
+                "Enable the Arch composer after Farcaster publishing proof has been recorded.",
+            },
+          ]
+        : undefined,
     fields: [
       {
         id: "composer",
@@ -753,6 +961,7 @@ function renderTerminalField(field: SetupField): string[] {
   const label = field.required ? `${field.label} *` : field.label;
   const lines = [`${label}: ${field.value ?? ""}`.trimEnd()];
 
+  if (field.errorDescription) lines.push(`  Error: ${field.errorDescription}`);
   if (field.description) lines.push(`  ${field.description}`);
 
   if (field.type === "radio" || field.type === "dropdown") {

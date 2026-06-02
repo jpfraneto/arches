@@ -1,6 +1,13 @@
-import { createSetupBrokerApp } from "./app";
+import {
+  createSetupBrokerApp,
+  sanitizeSetupSessionRecordForPersistence,
+  type SetupSessionRecord,
+} from "./app";
+import { createApplianceLaunchProvider } from "./appliance-launch";
 import { createChannelEligibilityProvider } from "./channel-eligibility";
 import { createFarcasterVerificationProvider } from "./farcaster-verification";
+import { createPublishingVerificationProvider } from "./publishing-verification";
+import { createJsonFileSetupBrokerStore } from "./setup-store";
 import { createTunnelProvisioningProvider } from "./tunnel-provisioning";
 
 const port = Number(Bun.env.PORT ?? 3020);
@@ -22,6 +29,18 @@ const farcasterVerificationProvider = createFarcasterVerificationProvider({
   FARCASTER_ETH_RPC_URL: Bun.env.FARCASTER_ETH_RPC_URL,
   FARCASTER_ACCEPT_AUTH_ADDRESS: Bun.env.FARCASTER_ACCEPT_AUTH_ADDRESS,
 });
+const applianceLaunchProvider = createApplianceLaunchProvider({
+  ARCHES_APPLIANCE_LAUNCH_PROVIDER: Bun.env.ARCHES_APPLIANCE_LAUNCH_PROVIDER,
+});
+const publishingVerificationProvider = createPublishingVerificationProvider({
+  ARCHES_PUBLISHING_VERIFICATION_PROVIDER: Bun.env.ARCHES_PUBLISHING_VERIFICATION_PROVIDER,
+});
+const setupStore = Bun.env.ARCHES_SETUP_STORE_FILE
+  ? createJsonFileSetupBrokerStore<SetupSessionRecord>({
+      filePath: Bun.env.ARCHES_SETUP_STORE_FILE,
+      sanitizeSession: sanitizeSetupSessionRecordForPersistence,
+    })
+  : undefined;
 
 Bun.serve({
   port,
@@ -31,6 +50,9 @@ Bun.serve({
     channelEligibilityProvider,
     tunnelProvisioningProvider,
     farcasterVerificationProvider,
+    applianceLaunchProvider,
+    publishingVerificationProvider,
+    setupStore,
   }).fetch,
 });
 
