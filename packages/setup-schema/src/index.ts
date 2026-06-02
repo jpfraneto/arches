@@ -27,6 +27,22 @@ export type SetupChoice = {
   data?: Record<string, unknown>;
 };
 
+export type SetupStepActionId =
+  | "request-signer-approval"
+  | "check-signer-approval"
+  | "refresh-eligible-channels"
+  | "provision-tunnel"
+  | "export-arch-config";
+
+export type SetupStepAction = {
+  id: SetupStepActionId;
+  label: string;
+  method: "post";
+  path: string;
+  description?: string;
+  disabled?: boolean;
+};
+
 export type SetupField = {
   id: string;
   type: SetupFieldType;
@@ -53,6 +69,7 @@ export type SetupStep = {
   completedByFid?: number;
   completionEventId?: string;
   completionEventType?: string;
+  actions?: SetupStepAction[];
   fields: SetupField[];
 };
 
@@ -379,6 +396,15 @@ export function renderTerminalStep(step: SetupStep): string {
     lines.push("", ...renderTerminalField(field));
   }
 
+  if (step.actions?.length) {
+    lines.push("", "Actions:");
+    for (const action of step.actions) {
+      const disabled = action.disabled ? " (disabled)" : "";
+      lines.push(`  - ${action.label}${disabled}`);
+      if (action.description) lines.push(`    ${action.description}`);
+    }
+  }
+
   return lines.join("\n");
 }
 
@@ -410,13 +436,34 @@ function verifyFarcasterStep(state: SetupState): SetupStepDraft {
 
 function prepareSignerStep(state: SetupState): SetupStepDraft {
   const approved = Boolean(state.signerApproved);
+  const status = statusAfter(Boolean(state.hostFid), approved);
 
   return {
     id: "prepare-signer",
     title: "Prepare Signer",
     description: "Approve a signer that belongs to this Arch and stays with the appliance.",
-    status: statusAfter(Boolean(state.hostFid), approved),
+    status,
     icon: "signature",
+    actions:
+      status === "active"
+        ? [
+            state.signerRequestUrl && !approved
+              ? {
+                  id: "check-signer-approval",
+                  label: "Check signer approval",
+                  method: "post",
+                  path: "signer/status",
+                  description: "Poll the provider until the host-approved signer is verified.",
+                }
+              : {
+                  id: "request-signer-approval",
+                  label: "Request signer approval",
+                  method: "post",
+                  path: "signer/request",
+                  description: "Create a provider-backed signer approval request for this host FID.",
+                },
+          ]
+        : undefined,
     fields: [
       {
         id: "signer",
@@ -445,13 +492,26 @@ function prepareSignerStep(state: SetupState): SetupStepDraft {
 
 function chooseCommunityStep(state: SetupState): SetupStepDraft {
   const channels = state.eligibleChannels ?? [];
+  const status = statusAfter(Boolean(state.signerApproved), Boolean(state.selectedChannelSlug));
 
   return {
     id: "choose-community",
     title: "Choose Community",
     description: "Select a Farcaster channel the verified host FID can lead or moderate.",
-    status: statusAfter(Boolean(state.signerApproved), Boolean(state.selectedChannelSlug)),
+    status,
     icon: "channels",
+    actions:
+      status === "active"
+        ? [
+            {
+              id: "refresh-eligible-channels",
+              label: "Refresh eligible channels",
+              method: "post",
+              path: "channels/refresh",
+              description: "Reload channels the verified host FID can lead or moderate.",
+            },
+          ]
+        : undefined,
     fields: [
       {
         id: "channel",
@@ -579,12 +639,35 @@ function configureSurfaceStep(state: SetupState): SetupStepDraft {
 }
 
 function launchApplianceStep(state: SetupState): SetupStepDraft {
+  const status = statusAfter(Boolean(state.surfaceConfigured), Boolean(state.applianceLaunched));
+  const needsTunnel = state.hostingMode === "tunnel-local" && !state.tunnelProvisioned;
+
   return {
     id: "launch-appliance",
     title: "Launch Appliance",
     description: "Render the appliance config, tunnel token, and Docker services.",
-    status: statusAfter(Boolean(state.surfaceConfigured), Boolean(state.applianceLaunched)),
+    status,
     icon: "rocket",
+    actions:
+      status === "active"
+        ? [
+            needsTunnel
+              ? {
+                  id: "provision-tunnel",
+                  label: "Provision tunnel",
+                  method: "post",
+                  path: "tunnel/provision",
+                  description: "Create the Cloudflare Tunnel route for this Arch hostname.",
+                }
+              : {
+                  id: "export-arch-config",
+                  label: "Export Arch config",
+                  method: "post",
+                  path: "arch/config",
+                  description: "Render the non-secret appliance config from verified setup state.",
+                },
+          ]
+        : undefined,
     fields: [
       {
         id: "tunnel",

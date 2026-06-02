@@ -112,13 +112,14 @@ type SetupActionResult =
     }
   | {
       ok: false;
-      status: 400 | 401 | 404 | 409 | 501 | 502;
+      status: 400 | 401 | 404 | 409 | 500 | 501 | 502;
       error: string;
       message: string;
     };
 
 type SignerActionResult = SetupActionResult;
 type ChannelRefreshResult = SetupActionResult;
+type TunnelProvisionResult = SetupActionResult;
 
 const sessions = new Map<string, SessionRecord>();
 const slugReservations = new Map<string, string>();
@@ -581,15 +582,28 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
 
   app.post("/api/setup/sessions/:sessionId/tunnel/provision", async (c) => {
     const sessionId = c.req.param("sessionId");
+    const result = await provisionTunnelForSession(sessionId);
+    if (!result.ok) return c.json({ error: result.error, message: result.message }, result.status);
+
+    return c.json(sessionResponse(result.record, publicOrigin));
+  });
+
+  async function provisionTunnelForSession(
+    sessionId: string,
+  ): Promise<TunnelProvisionResult> {
     const record = sessions.get(sessionId);
-    if (!record) return c.json({ error: "setup session not found" }, 404);
+    if (!record) {
+      return {
+        ok: false,
+        status: 404,
+        error: "setup session not found",
+        message: "Setup session not found.",
+      };
+    }
 
     const readiness = tunnelProvisioningReadiness(record.state);
     if (!readiness.ok) {
-      return c.json(
-        { error: readiness.error, message: readiness.message },
-        readiness.status,
-      );
+      return readiness;
     }
 
     try {
@@ -630,7 +644,7 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
 
       sessions.set(sessionId, updatedRecord);
 
-      return c.json(sessionResponse(updatedRecord, publicOrigin));
+      return { ok: true, record: updatedRecord };
     } catch (error) {
       if (error instanceof TunnelProvisioningError) {
         sessions.set(
@@ -648,21 +662,22 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
           ),
         );
 
-        return c.json(
-          { error: "tunnel provisioning failed", message: error.message },
-          error.status as 400 | 409 | 500 | 501 | 502,
-        );
+        return {
+          ok: false,
+          status: error.status as 400 | 409 | 500 | 501 | 502,
+          error: "tunnel provisioning failed",
+          message: error.message,
+        };
       }
 
-      return c.json(
-        {
-          error: "tunnel provisioning failed",
-          message: "Tunnel provisioning failed before installer config could be delivered.",
-        },
-        500,
-      );
+      return {
+        ok: false,
+        status: 500,
+        error: "tunnel provisioning failed",
+        message: "Tunnel provisioning failed before installer config could be delivered.",
+      };
     }
-  });
+  }
 
   app.post("/api/setup/sessions/:sessionId/arch/config", (c) => {
     const sessionId = c.req.param("sessionId");
@@ -716,6 +731,14 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
   app.post("/setup/:sessionId/channels/refresh", async (c) => {
     const sessionId = c.req.param("sessionId");
     const result = await refreshChannelsForSession(sessionId);
+    if (!result.ok) return c.html(renderStepErrorHtml(result.message), result.status);
+
+    return c.redirect(`/setup/${sessionId}`, 303);
+  });
+
+  app.post("/setup/:sessionId/tunnel/provision", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const result = await provisionTunnelForSession(sessionId);
     if (!result.ok) return c.html(renderStepErrorHtml(result.message), result.status);
 
     return c.redirect(`/setup/${sessionId}`, 303);
@@ -2424,7 +2447,7 @@ async function renderCurrentStep(
     </form>`
         : fieldMarkup
     }
-    ${renderStepAction(sessionId, step)}
+    ${renderStepActions(sessionId, step)}
     ${
       shouldPollFarcaster
         ? `<p class="poll-status" data-farcaster-autopoll-status>Waiting for Farcaster signature...</p>`
@@ -2433,30 +2456,18 @@ async function renderCurrentStep(
   </div>`;
 }
 
-function renderStepAction(sessionId: string, step: SetupStep): string {
-  if (step.id === "choose-community" && step.status === "active") {
-    return `<form class="actions" method="post" action="/setup/${escapeHtml(sessionId)}/channels/refresh">
-      <button type="submit">Refresh eligible channels</button>
+function renderStepActions(sessionId: string, step: SetupStep): string {
+  const actions = step.actions ?? [];
+  if (actions.length === 0) return "";
+
+  return actions
+    .map((action) => {
+      const disabled = action.disabled ? " disabled" : "";
+      return `<form class="actions" method="${escapeHtml(action.method)}" action="/setup/${escapeHtml(sessionId)}/${escapeHtml(action.path)}">
+      <button type="submit"${disabled}>${escapeHtml(action.label)}</button>
     </form>`;
-  }
-
-  if (step.id === "prepare-signer" && step.status === "active") {
-    const hasSignerRequest = step.fields.some(
-      (field) => field.id === "signerRequest" && field.value,
-    );
-    const action = hasSignerRequest ? "status" : "request";
-    const label = hasSignerRequest ? "Check signer approval" : "Request signer approval";
-
-    return `<form class="actions" method="post" action="/setup/${escapeHtml(sessionId)}/signer/${action}">
-      <button type="submit">${escapeHtml(label)}</button>
-    </form>`;
-  }
-
-  if (step.id !== "launch-appliance" || step.status !== "active") return "";
-
-  return `<form class="actions" method="post" action="/setup/${escapeHtml(sessionId)}/arch/config">
-      <button type="submit">Export Arch config</button>
-    </form>`;
+    })
+    .join("");
 }
 
 async function renderField(field: SetupField, editable = false): Promise<string> {

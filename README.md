@@ -183,9 +183,11 @@ surface type (`village`, `bulletin`, `library`), posting grammar
 
 The schema also carries Discourse-style wizard metadata: step index,
 one-based display index, previous/next step ids, status, icon name, and choice
-badges. The browser setup page renders that metadata directly for step count,
-indexed progress, channel role badges, surface preset cards, and inline field
-validation errors.
+badges. It also carries active step actions such as signer approval, eligible
+channel refresh, tunnel provisioning, and Arch config export. The browser setup
+page renders that metadata directly for step count, indexed progress, channel
+role badges, surface preset cards, inline field validation errors, and
+provider-backed action buttons.
 
 Each setup response also includes a compact server-derived summary with
 readiness, progress count, blocked count, current step title, and next action.

@@ -58,6 +58,15 @@ describe("buildSetupSession", () => {
     const step = findStep(session, "prepare-signer");
 
     expect(session.currentStepId).toBe("prepare-signer");
+    expect(step?.actions).toEqual([
+      {
+        id: "check-signer-approval",
+        label: "Check signer approval",
+        method: "post",
+        path: "signer/status",
+        description: "Poll the provider until the host-approved signer is verified.",
+      },
+    ]);
     expect(step?.fields.map((field) => field.id)).toEqual(["signer", "signerRequest"]);
     expect(step?.fields[1].value).toBe("farcaster://signer-request?token=signer_123");
     expect(JSON.stringify(step)).not.toContain("privateKey");
@@ -75,6 +84,7 @@ describe("buildSetupSession", () => {
 
     expect(session.currentStepId).toBe("choose-community");
     expect(step?.status).toBe("completed");
+    expect(step?.actions).toBeUndefined();
     expect(step?.fields[0].value).toBe("approved");
     expect(step?.fields[0].description).toContain("0xsignerpublickey");
   });
@@ -94,6 +104,15 @@ describe("buildSetupSession", () => {
 
     expect(session.currentStepId).toBe("choose-community");
     expect(step?.status).toBe("active");
+    expect(step?.actions).toEqual([
+      {
+        id: "refresh-eligible-channels",
+        label: "Refresh eligible channels",
+        method: "post",
+        path: "channels/refresh",
+        description: "Reload channels the verified host FID can lead or moderate.",
+      },
+    ]);
     expect(step?.fields[0].choices).toEqual([
       {
         id: "anky",
@@ -163,6 +182,52 @@ describe("buildSetupSession", () => {
     ]);
     expect(step?.fields[1].value).toBe("open-casts");
     expect(step?.fields[2].value).toBe("daylight");
+  });
+
+  test("renders launch actions from setup state", () => {
+    const beforeTunnel = buildSetupSession({
+      sessionId: "setup_launch_action",
+      hostFid: 18350,
+      signerApproved: true,
+      eligibleChannels: [{ slug: "anky", role: "lead" }],
+      selectedChannelSlug: "anky",
+      reservedSlug: "anky",
+      domain: "anky.arches.lat",
+      hostingMode: "tunnel-local",
+      surfaceConfigured: true,
+    });
+    const afterTunnel = buildSetupSession({
+      sessionId: "setup_launch_action",
+      hostFid: 18350,
+      signerApproved: true,
+      eligibleChannels: [{ slug: "anky", role: "lead" }],
+      selectedChannelSlug: "anky",
+      reservedSlug: "anky",
+      domain: "anky.arches.lat",
+      hostingMode: "tunnel-local",
+      surfaceConfigured: true,
+      tunnelProvisioned: true,
+      tunnelId: "tunnel_123",
+    });
+
+    expect(findStep(beforeTunnel, "launch-appliance")?.actions).toEqual([
+      {
+        id: "provision-tunnel",
+        label: "Provision tunnel",
+        method: "post",
+        path: "tunnel/provision",
+        description: "Create the Cloudflare Tunnel route for this Arch hostname.",
+      },
+    ]);
+    expect(findStep(afterTunnel, "launch-appliance")?.actions).toEqual([
+      {
+        id: "export-arch-config",
+        label: "Export Arch config",
+        method: "post",
+        path: "arch/config",
+        description: "Render the non-secret appliance config from verified setup state.",
+      },
+    ]);
   });
 
   test("completes only after publishing is verified and composer is unlocked", () => {
@@ -344,6 +409,19 @@ Next: Continue with Choose Community.
     expect(renderTerminalSession(session, { includePendingSteps: false })).not.toContain(
       "[ ] Prepare Signer",
     );
+  });
+
+  test("renders server-defined step actions in terminal output", () => {
+    const session = buildSetupSession({
+      sessionId: "setup_actions",
+      hostFid: 18350,
+    });
+    const step = findStep(session, "prepare-signer");
+
+    expect(step).toBeDefined();
+    expect(renderTerminalStep(step!)).toContain(`Actions:
+  - Request signer approval
+    Create a provider-backed signer approval request for this host FID.`);
   });
 
   test("renders copy fields as multiline copy blocks", () => {

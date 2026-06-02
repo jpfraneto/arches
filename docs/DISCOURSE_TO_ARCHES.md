@@ -320,8 +320,9 @@ remains blocked until Farcaster publishing has been verified.
 
 The schema now carries Discourse-like step metadata as well: `index`,
 `displayIndex`, `previousStepId`, `nextStepId`, status, icon name, fields,
-choices, and choice extra labels. That mirrors the useful part of Discourse's
-wizard serializers while keeping Arches' Farcaster-first setup contract.
+choices, choice extra labels, and active step actions. That mirrors the useful
+part of Discourse's wizard serializers while keeping Arches' Farcaster-first
+setup contract.
 It also carries a server-derived setup summary with readiness, progress count,
 blocked step count, current step title, and next action so terminal and browser
 renderers share the same operator status model.
@@ -348,10 +349,12 @@ session state becomes appliance config fields such as `ARCH_SLUG`,
 `ARCH_PROVENANCE_LABEL`. When available, it may also include non-secret
 `ARCH_SIGNER_PUBLIC_KEY`. The snapshot is intentionally non-secret and does not
 carry tunnel tokens or private signer material.
-The browser launch step can now apply that same export from inside the wizard:
-it logs `arch_config_exported`, stores the non-secret env block on the session,
-and renders it as a copy field for review. Upstream setup changes clear the
-exported env block so stale settings are not reused.
+The browser launch step can now run the same schema-defined actions from inside
+the wizard. For `tunnel-local`, the schema exposes `Provision tunnel` until the
+Cloudflare route is ready, then exposes `Export Arch config`. Config export logs
+`arch_config_exported`, stores the non-secret env block on the session, and
+renders it as a copy field for review. Upstream setup changes clear the exported
+env block so stale settings are not reused.
 
 The first configure-surface choices now mirror the useful Discourse category
 setup pattern: pick the kind of space before detailed configuration. Arches
@@ -360,13 +363,13 @@ starts with surface presets (`village`, `bulletin`, `library`), grammar presets
 (`daylight`, `high-contrast`, `night`).
 
 The browser setup renderer now preserves that UI model: the current step shows
-its server-owned step count, the sidebar shows indexed progress and step icons,
-channel choices can show role badges from the schema, and the surface preset is
-a card chooser while grammar and theme are select fields. Validation failures
-re-render the same setup page with inline field errors instead of a generic
-error screen. This keeps the Discourse category-type-card and field-error ideas
-while leaving Arches' setup schema, broker, Cloudflare routing, and appliance
-config as the underlying infra.
+its server-owned step count and actions, the sidebar shows indexed progress and
+step icons, channel choices can show role badges from the schema, and the
+surface preset is a card chooser while grammar and theme are select fields.
+Validation failures re-render the same setup page with inline field errors
+instead of a generic error screen. This keeps the Discourse category-type-card,
+wizard-action, and field-error ideas while leaving Arches' setup schema, broker,
+Cloudflare routing, and appliance config as the underlying infra.
 
 ## Implementation Phases
 
@@ -399,14 +402,16 @@ config as the underlying infra.
    `packages/setup-schema` and `apps/setup-broker`).
 12. Add server-derived setup summary/readiness for terminal and browser
    renderers (started in `packages/setup-schema` and `apps/setup-broker`).
-13. Teach `scripts/install.sh` to call the broker when no flags are passed
+13. Move provider-backed wizard actions into the setup schema (started in
+   `packages/setup-schema` and rendered by `apps/setup-broker`).
+14. Teach `scripts/install.sh` to call the broker when no flags are passed
    (started with the terminal session handoff).
-14. Add unclaimed-subdomain page and wildcard routing (started in
+15. Add unclaimed-subdomain page and wildcard routing (started in
    `apps/setup-broker`).
-15. Add production signer request provider and appliance-side signer storage
+16. Add production signer request provider and appliance-side signer storage
    (provider boundary and browser step actions started in `apps/setup-broker`).
-16. Wire Hypersnap Lite publish probe.
-17. Enable posting only when the publish contract is confirmed.
+17. Wire Hypersnap Lite publish probe.
+18. Enable posting only when the publish contract is confirmed.
 
 ## Product Principle
 

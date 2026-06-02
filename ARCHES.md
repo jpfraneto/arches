@@ -282,7 +282,8 @@ Implemented scaffolding in this repo:
 - terminal and browser setup rendering
 - server-derived setup summary/readiness rendering
 - generic current-step setup updater for schema-backed fields
-- Discourse-style setup step metadata, browser progress, and field-error rendering
+- Discourse-style setup step metadata, browser progress, step actions, and
+  field-error rendering
 - Farcaster verification provider boundary with per-session nonce/domain
   challenge
 - optional official Farcaster auth-client SIWF verifier
@@ -298,6 +299,7 @@ Implemented scaffolding in this repo:
 - unclaimed hostname setup invitation scaffold
 - optional Neynar channel eligibility adapter
 - browser channel refresh action for verified host FID eligibility
+- browser tunnel provisioning action for the launch step
 - in-memory eligible-channel slug reservation scaffold
 
 Not implemented yet:

@@ -127,8 +127,10 @@ with the same server-defined setup session.
 
 The browser renderer also consumes the schema's Discourse-style wizard
 metadata: step index, display index, previous/next ids, status, icon name, and
-choice extra labels. This keeps the visible setup order and channel role badges
-server-owned instead of hard-coded in the browser shell.
+choice extra labels. It also renders the schema's active step actions, so
+buttons such as `Request signer approval`, `Refresh eligible channels`,
+`Provision tunnel`, and `Export Arch config` are server-owned wizard data
+instead of hard-coded browser branches.
 
 The session response includes a server-derived setup summary with readiness,
 progress count, blocked step count, current step title, and next action. The
@@ -201,11 +203,13 @@ not include the Cloudflare Tunnel token, private signer material, mnemonic
 material, or private API tokens. The installer command remains the delivery path
 for the tunnel token until a safer installer handoff is implemented.
 
-The browser launch step now exposes the same export as a wizard action. When the
-host clicks `Export Arch config`, the broker logs `arch_config_exported`, stores
-the non-secret env block on the setup session, and re-renders it as a copy field
-inside the launch step. If earlier setup choices change, that exported env block
-is cleared and must be regenerated.
+The browser launch step exposes provider-backed actions from the setup schema.
+For `tunnel-local`, it first renders `Provision tunnel`; after the tunnel is
+ready, it renders `Export Arch config`. When the host exports config, the broker
+logs `arch_config_exported`, stores the non-secret env block on the setup
+session, and re-renders it as a copy field inside the launch step. If earlier
+setup choices change, that exported env block is cleared and must be
+regenerated.
 
 The configure step follows the Discourse category-setup idea of choosing the
 kind of space first. Arches currently exposes server-defined choices for surface

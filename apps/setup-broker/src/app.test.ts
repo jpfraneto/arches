@@ -1217,6 +1217,64 @@ describe("setup broker", () => {
     expect(JSON.stringify(body.events)).not.toContain("fake-token");
   });
 
+  test("provisions a tunnel from the browser launch step", async () => {
+    const app = createSetupBrokerApp({
+      allowDevStateUpdates: true,
+      tunnelProvisioningProvider: {
+        async provisionArchTunnel(request) {
+          return {
+            tunnelId: "tunnel_123",
+            domain: request.domain,
+            installCommand:
+              "curl -fsSL https://install.arches.lat | bash -s -- --arch anky --tunnel-token 'fake-token'",
+          };
+        },
+      },
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify(readyTunnelProvisioningState()),
+      headers: { "content-type": "application/json" },
+    });
+
+    const pageResponse = await app.request(`/setup/${created.session.sessionId}`);
+    const pageHtml = await pageResponse.text();
+    const response = await app.request(`/setup/${created.session.sessionId}/tunnel/provision`, {
+      method: "POST",
+      redirect: "manual",
+    });
+    const sessionResponse = await app.request(`/api/setup/sessions/${created.session.sessionId}`);
+    const body = await sessionResponse.json();
+    const updatedPageResponse = await app.request(`/setup/${created.session.sessionId}`);
+    const updatedPageHtml = await updatedPageResponse.text();
+
+    expect(pageResponse.status).toBe(200);
+    expect(pageHtml).toContain("Launch Appliance");
+    expect(pageHtml).toContain(`action="/setup/${created.session.sessionId}/tunnel/provision"`);
+    expect(pageHtml).toContain("Provision tunnel");
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(`/setup/${created.session.sessionId}`);
+    expect(body.session.steps[6].fields[0].value).toBe("provisioned");
+    expect(body.session.steps[6].actions).toEqual([
+      {
+        id: "export-arch-config",
+        label: "Export Arch config",
+        method: "post",
+        path: "arch/config",
+        description: "Render the non-secret appliance config from verified setup state.",
+      },
+    ]);
+    expect(body.events.at(-1).type).toBe("tunnel_provisioned");
+    expect(updatedPageResponse.status).toBe(200);
+    expect(updatedPageHtml).toContain(
+      `action="/setup/${created.session.sessionId}/arch/config"`,
+    );
+    expect(updatedPageHtml).toContain("Export Arch config");
+    expect(JSON.stringify(body.events)).not.toContain("fake-token");
+  });
+
   test("surfaces tunnel provider errors without mutating session progress", async () => {
     const app = createSetupBrokerApp({
       allowDevStateUpdates: true,
