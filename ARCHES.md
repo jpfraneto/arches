@@ -305,6 +305,7 @@ Implemented scaffolding in this repo:
 - in-memory eligible-channel slug reservation scaffold
 - injectable in-memory setup store adapter boundary for sessions, reservations,
   and signer request tokens
+- sanitized setup store snapshot boundary that drops volatile delivery fields
 
 Not implemented yet:
 

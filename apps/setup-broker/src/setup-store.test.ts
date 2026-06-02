@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { createInMemorySetupBrokerStore } from "./setup-store";
+import {
+  createInMemorySetupBrokerStore,
+  snapshotSetupBrokerStore,
+} from "./setup-store";
 
 describe("setup broker store", () => {
   test("stores sessions, reservations, and signer request tokens behind one boundary", () => {
@@ -32,5 +35,41 @@ describe("setup broker store", () => {
     expect(store.sessions.get("setup_1")).toBeUndefined();
     expect(store.sessions.get("setup_2")?.state.sessionId).toBe("setup_2");
     expect(store.sessions.size).toBe(1);
+  });
+
+  test("snapshots sessions and reservations without signer request tokens", () => {
+    const store = createInMemorySetupBrokerStore<{
+      state: { sessionId: string; deliveryField?: string };
+    }>();
+
+    store.sessions.set("setup_1", {
+      state: { sessionId: "setup_1", deliveryField: "remove-me" },
+    });
+    store.slugReservations.set("anky", "setup_1");
+    store.signerRequestTokens.set("setup_1", "signer_request_token");
+
+    const snapshot = snapshotSetupBrokerStore(store, {
+      now: () => new Date("2026-06-02T12:00:00.000Z"),
+      sanitizeSession(record) {
+        return {
+          state: {
+            sessionId: record.state.sessionId,
+          },
+        };
+      },
+    });
+
+    expect(snapshot).toEqual({
+      schemaVersion: 1,
+      generatedAt: "2026-06-02T12:00:00.000Z",
+      sessions: {
+        setup_1: { state: { sessionId: "setup_1" } },
+      },
+      slugReservations: {
+        anky: "setup_1",
+      },
+    });
+    expect(JSON.stringify(snapshot)).not.toContain("signer_request_token");
+    expect(JSON.stringify(snapshot)).not.toContain("remove-me");
   });
 });

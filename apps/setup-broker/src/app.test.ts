@@ -2,10 +2,14 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import {
   createSetupBrokerApp,
   resetSetupBrokerSessionsForTests,
+  sanitizeSetupSessionRecordForPersistence,
   type SetupSessionRecord,
 } from "./app";
 import { FarcasterVerificationError } from "./farcaster-verification";
-import { createInMemorySetupBrokerStore } from "./setup-store";
+import {
+  createInMemorySetupBrokerStore,
+  snapshotSetupBrokerStore,
+} from "./setup-store";
 import { TunnelProvisioningError } from "./tunnel-provisioning";
 
 describe("setup broker", () => {
@@ -119,6 +123,68 @@ describe("setup broker", () => {
     expect(sharedBody.session.sessionId).toBe(sessionId);
     expect(healthBody.sessions).toBe(1);
     expect(isolatedResponse.status).toBe(404);
+  });
+
+  test("sanitizes setup records before durable store snapshots", () => {
+    const setupStore = createInMemorySetupBrokerStore<SetupSessionRecord>();
+    setupStore.sessions.set("setup_1", {
+      state: {
+        sessionId: "setup_1",
+        farcasterQrUrl: "farcaster://connect?channelToken=channel_123",
+        farcasterChannelToken: "channel_123",
+        hostFid: 18350,
+        signerRequestUrl: "farcaster://signer-request?token=signer_123",
+        signerStatus: "waiting",
+        signerApproved: true,
+        signerPublicKey: "0xsignerpublickey",
+        selectedChannelSlug: "anky",
+        reservedSlug: "anky",
+        domain: "anky.arches.lat",
+        hostingMode: "tunnel-local",
+        tunnelId: "tunnel_123",
+        tunnelProvisioned: true,
+        installCommand:
+          "curl -fsSL https://install.arches.lat | bash -s -- --tunnel-token 'fake-token'",
+        archConfigExported: true,
+        archConfigEnv: "ARCH_SLUG=anky\nARCH_DOMAIN=anky.arches.lat",
+      },
+      events: [
+        {
+          id: "setup_event_1",
+          sessionId: "setup_1",
+          type: "session_created",
+          at: "2026-06-02T12:00:00.000Z",
+        },
+      ],
+      createdAt: "2026-06-02T12:00:00.000Z",
+      updatedAt: "2026-06-02T12:05:00.000Z",
+    });
+    setupStore.slugReservations.set("anky", "setup_1");
+    setupStore.signerRequestTokens.set("setup_1", "signer_request_token");
+
+    const snapshot = snapshotSetupBrokerStore(setupStore, {
+      now: () => new Date("2026-06-02T12:10:00.000Z"),
+      sanitizeSession: sanitizeSetupSessionRecordForPersistence,
+    });
+
+    expect(snapshot.sessions.setup_1.state).toMatchObject({
+      sessionId: "setup_1",
+      hostFid: 18350,
+      signerApproved: true,
+      signerPublicKey: "0xsignerpublickey",
+      selectedChannelSlug: "anky",
+      reservedSlug: "anky",
+      domain: "anky.arches.lat",
+      tunnelId: "tunnel_123",
+      tunnelProvisioned: true,
+    });
+    expect(snapshot.slugReservations).toEqual({ anky: "setup_1" });
+    expect(snapshot.sessions.setup_1.events).toHaveLength(1);
+    expect(JSON.stringify(snapshot)).not.toContain("fake-token");
+    expect(JSON.stringify(snapshot)).not.toContain("signer_123");
+    expect(JSON.stringify(snapshot)).not.toContain("channel_123");
+    expect(JSON.stringify(snapshot)).not.toContain("signer_request_token");
+    expect(JSON.stringify(snapshot)).not.toContain("ARCH_DOMAIN");
   });
 
   test("creates a setup session as terminal text for the installer", async () => {

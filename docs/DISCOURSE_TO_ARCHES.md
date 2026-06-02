@@ -333,6 +333,10 @@ renderers share the same operator status model.
 The serialized session includes `schemaVersion`, `createdAt`, and `updatedAt`
 so future durable stores can migrate and recover setup sessions deliberately
 instead of dumping raw process memory to disk.
+The broker also has a sanitized store snapshot boundary: it can retain durable
+session facts, reservations, and audit events while dropping signer request
+tokens, Farcaster relay tokens, generated installer commands, and generated env
+output before any future disk or database adapter persists state.
 It also supports field-level error descriptions so browser submissions can stay
 inside the wizard when validation fails.
 

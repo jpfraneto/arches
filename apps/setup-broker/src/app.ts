@@ -942,6 +942,26 @@ export function resetSetupBrokerSessionsForTests() {
   defaultSetupStore.clear();
 }
 
+export function sanitizeSetupSessionRecordForPersistence(
+  record: SetupSessionRecord,
+): SetupSessionRecord {
+  const {
+    farcasterQrUrl: _farcasterQrUrl,
+    farcasterChannelToken: _farcasterChannelToken,
+    signerRequestUrl: _signerRequestUrl,
+    signerStatus: _signerStatus,
+    installCommand: _installCommand,
+    archConfigExported: _archConfigExported,
+    archConfigEnv: _archConfigEnv,
+    ...state
+  } = record.state;
+
+  return {
+    ...record,
+    state,
+  };
+}
+
 async function createSetupSession(
   sessions: SetupStoreMap<SetupSessionRecord>,
   publicOrigin: string,

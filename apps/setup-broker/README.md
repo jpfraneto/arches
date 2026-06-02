@@ -182,6 +182,13 @@ That gives future durable storage a migration and recovery hook. Raw file
 persistence is still intentionally not enabled, because current setup state can
 include short-lived delivery fields such as generated installer commands.
 
+The store boundary also has a snapshot helper plus an Arches-specific session
+sanitizer. Durable snapshots can keep session facts, reservations, and audit
+events while dropping signer request tokens, Farcaster relay channel tokens,
+signer request URLs, generated install commands, and generated env output. This
+is the safe persistence boundary to preserve before adding a real disk or
+database adapter.
+
 The broker now also derives step provenance from those events. Completed steps
 in the session schema can include `completedAt`, `completedByFid`,
 `completionEventId`, and `completionEventType`, and the browser sidebar renders
