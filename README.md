@@ -172,6 +172,8 @@ See `docs/DOMAIN_SETUP.md` for DNS and static hosting notes.
 
 - `apps/api` contains a minimal Bun + Hono API.
 - `apps/web` contains a minimal web composer and feed.
+- `apps/setup-broker` contains the first setup-session API scaffold for the
+  Discourse-inspired zero-info installer flow.
 - `packages/setup-schema` contains the Discourse-inspired setup session schema
   that can be rendered by a future terminal installer, setup broker, or browser
   wizard.
@@ -222,6 +224,13 @@ Test the setup schema:
 
 ```bash
 cd packages/setup-schema
+bun test
+```
+
+Test the setup broker:
+
+```bash
+cd apps/setup-broker
 bun test
 ```
 

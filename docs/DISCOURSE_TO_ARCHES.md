@@ -281,6 +281,11 @@ site/
 
 The broker is allowed to coordinate. It is not allowed to own every Arch.
 
+`apps/setup-broker` now contains the first in-memory session API for this model.
+It creates setup sessions, serves schema JSON, serves terminal output, and
+intentionally returns `501` for Farcaster verification instead of accepting a
+manual admin FID.
+
 `packages/setup-schema` now contains the first concrete version of this shape:
 renderer-neutral setup steps, fields, choices, completion state, submission
 validation, a terminal renderer, and the product invariant that composer unlock
@@ -290,7 +295,8 @@ remains blocked until Farcaster publishing has been verified.
 
 1. Define setup session schema and terminal renderer (implemented in
    `packages/setup-schema`).
-2. Add setup broker session API with in-memory storage for local development.
+2. Add setup broker session API with in-memory storage for local development
+   (started in `apps/setup-broker`).
 3. Add Farcaster QR verification and host FID derivation.
 4. Add Neynar channel lookup for eligible channels.
 5. Add slug reservation for `*.arches.lat`.
