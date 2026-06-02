@@ -20,6 +20,7 @@ export type StepStatus = "pending" | "active" | "completed" | "blocked";
 export type SetupChoice = {
   id: string;
   label: string;
+  extraLabel?: string;
   description?: string;
   disabled?: boolean;
   data?: Record<string, unknown>;
@@ -41,6 +42,11 @@ export type SetupStep = {
   title: string;
   description: string;
   status: StepStatus;
+  index: number;
+  displayIndex: number;
+  previousStepId?: SetupStepId;
+  nextStepId?: SetupStepId;
+  icon?: string;
   fields: SetupField[];
 };
 
@@ -101,6 +107,8 @@ export type ValidationError = {
 export type TerminalRenderOptions = {
   includePendingSteps?: boolean;
 };
+
+type SetupStepDraft = Omit<SetupStep, "index" | "displayIndex" | "previousStepId" | "nextStepId">;
 
 const HOSTING_CHOICES: SetupChoice[] = [
   {
@@ -180,7 +188,7 @@ const THEME_PRESET_CHOICES: SetupChoice[] = [
 
 export function buildSetupSession(state: SetupState): SetupSession {
   const start: SetupStepId = "verify-farcaster";
-  const steps: SetupStep[] = [
+  const steps = withWizardStepMetadata([
     verifyFarcasterStep(state),
     prepareSignerStep(state),
     chooseCommunityStep(state),
@@ -190,7 +198,7 @@ export function buildSetupSession(state: SetupState): SetupSession {
     launchApplianceStep(state),
     verifyPublishingStep(state),
     unlockArchStep(state),
-  ];
+  ]);
 
   const currentStepId = steps.find((step) => step.status !== "completed")?.id ?? "unlock-arch";
 
@@ -202,6 +210,16 @@ export function buildSetupSession(state: SetupState): SetupSession {
     completed: steps.every((step) => step.status === "completed"),
     steps,
   };
+}
+
+function withWizardStepMetadata(steps: SetupStepDraft[]): SetupStep[] {
+  return steps.map((step, index) => ({
+    ...step,
+    index,
+    displayIndex: index + 1,
+    previousStepId: steps[index - 1]?.id,
+    nextStepId: steps[index + 1]?.id,
+  }));
 }
 
 export function findStep(session: SetupSession, stepId: SetupStepId): SetupStep | undefined {
@@ -273,7 +291,7 @@ export function renderTerminalStep(step: SetupStep): string {
   return lines.join("\n");
 }
 
-function verifyFarcasterStep(state: SetupState): SetupStep {
+function verifyFarcasterStep(state: SetupState): SetupStepDraft {
   const requestedArch = state.requestedSlug ? `${state.requestedSlug}.arches.lat` : null;
 
   return {
@@ -283,6 +301,7 @@ function verifyFarcasterStep(state: SetupState): SetupStep {
       ? `Scan with a Farcaster client so Arches can derive the host FID for ${requestedArch}.`
       : "Scan with a Farcaster client so Arches can derive the host FID.",
     status: state.hostFid ? "completed" : "active",
+    icon: "key",
     fields: [
       {
         id: "qr",
@@ -298,7 +317,7 @@ function verifyFarcasterStep(state: SetupState): SetupStep {
   };
 }
 
-function prepareSignerStep(state: SetupState): SetupStep {
+function prepareSignerStep(state: SetupState): SetupStepDraft {
   const approved = Boolean(state.signerApproved);
 
   return {
@@ -306,6 +325,7 @@ function prepareSignerStep(state: SetupState): SetupStep {
     title: "Prepare Signer",
     description: "Approve a signer that belongs to this Arch and stays with the appliance.",
     status: statusAfter(Boolean(state.hostFid), approved),
+    icon: "signature",
     fields: [
       {
         id: "signer",
@@ -332,7 +352,7 @@ function prepareSignerStep(state: SetupState): SetupStep {
   };
 }
 
-function chooseCommunityStep(state: SetupState): SetupStep {
+function chooseCommunityStep(state: SetupState): SetupStepDraft {
   const channels = state.eligibleChannels ?? [];
 
   return {
@@ -340,6 +360,7 @@ function chooseCommunityStep(state: SetupState): SetupStep {
     title: "Choose Community",
     description: "Select a Farcaster channel the verified host FID can lead or moderate.",
     status: statusAfter(Boolean(state.signerApproved), Boolean(state.selectedChannelSlug)),
+    icon: "channels",
     fields: [
       {
         id: "channel",
@@ -350,6 +371,7 @@ function chooseCommunityStep(state: SetupState): SetupStep {
         choices: channels.map((channel) => ({
           id: channel.slug,
           label: `/${channel.slug}`,
+          extraLabel: channel.role,
           description: channel.name ? `${channel.name} (${channel.role})` : channel.role,
           data: { role: channel.role },
         })),
@@ -362,7 +384,7 @@ function chooseCommunityStep(state: SetupState): SetupStep {
   };
 }
 
-function nameSurfaceStep(state: SetupState): SetupStep {
+function nameSurfaceStep(state: SetupState): SetupStepDraft {
   const defaultSlug = state.selectedChannelSlug ?? "";
   const slug = state.reservedSlug ?? defaultSlug;
 
@@ -371,6 +393,7 @@ function nameSurfaceStep(state: SetupState): SetupStep {
     title: "Name Surface",
     description: "Reserve the Arch slug and programmable hostname.",
     status: statusAfter(Boolean(state.selectedChannelSlug), Boolean(state.reservedSlug && state.domain)),
+    icon: "link",
     fields: [
       {
         id: "slug",
@@ -392,12 +415,13 @@ function nameSurfaceStep(state: SetupState): SetupStep {
   };
 }
 
-function chooseHostingStep(state: SetupState): SetupStep {
+function chooseHostingStep(state: SetupState): SetupStepDraft {
   return {
     id: "choose-hosting",
     title: "Choose Hosting",
     description: "Select where this community-held appliance will run.",
     status: statusAfter(Boolean(state.reservedSlug && state.domain), Boolean(state.hostingMode)),
+    icon: "server",
     fields: [
       {
         id: "mode",
@@ -411,7 +435,7 @@ function chooseHostingStep(state: SetupState): SetupStep {
   };
 }
 
-function configureSurfaceStep(state: SetupState): SetupStep {
+function configureSurfaceStep(state: SetupState): SetupStepDraft {
   const slug = state.reservedSlug ?? state.selectedChannelSlug;
 
   return {
@@ -419,6 +443,7 @@ function configureSurfaceStep(state: SetupState): SetupStep {
     title: "Configure Surface",
     description: "Set the first visible community defaults.",
     status: statusAfter(Boolean(state.hostingMode), Boolean(state.surfaceConfigured)),
+    icon: "layout",
     fields: [
       {
         id: "surfacePreset",
@@ -462,12 +487,13 @@ function configureSurfaceStep(state: SetupState): SetupStep {
   };
 }
 
-function launchApplianceStep(state: SetupState): SetupStep {
+function launchApplianceStep(state: SetupState): SetupStepDraft {
   return {
     id: "launch-appliance",
     title: "Launch Appliance",
     description: "Render the appliance config, tunnel token, and Docker services.",
     status: statusAfter(Boolean(state.surfaceConfigured), Boolean(state.applianceLaunched)),
+    icon: "rocket",
     fields: [
       {
         id: "tunnel",
@@ -489,12 +515,13 @@ function launchApplianceStep(state: SetupState): SetupStep {
   };
 }
 
-function verifyPublishingStep(state: SetupState): SetupStep {
+function verifyPublishingStep(state: SetupState): SetupStepDraft {
   return {
     id: "verify-publishing",
     title: "Verify Publishing",
     description: "Confirm Hypersnap Lite can publish Farcaster data for this Arch.",
     status: statusAfter(Boolean(state.applianceLaunched), Boolean(state.publishingVerified)),
+    icon: "protocol",
     fields: [
       {
         id: "publishing",
@@ -507,7 +534,7 @@ function verifyPublishingStep(state: SetupState): SetupStep {
   };
 }
 
-function unlockArchStep(state: SetupState): SetupStep {
+function unlockArchStep(state: SetupState): SetupStepDraft {
   const canUnlock = Boolean(state.publishingVerified);
   const unlocked = Boolean(state.composerUnlocked && state.publishingVerified);
 
@@ -516,6 +543,7 @@ function unlockArchStep(state: SetupState): SetupStep {
     title: "Unlock Arch",
     description: "Enable the composer and show the live community surface.",
     status: canUnlock ? (unlocked ? "completed" : "active") : "blocked",
+    icon: "composer",
     fields: [
       {
         id: "composer",

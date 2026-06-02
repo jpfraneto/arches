@@ -166,6 +166,11 @@ surface type (`village`, `bulletin`, `library`), posting grammar
 (`open-casts`, `curated-updates`, `knowledge-base`), and theme (`daylight`,
 `high-contrast`, `night`).
 
+The schema also carries Discourse-style wizard metadata: step index,
+one-based display index, previous/next step ids, status, icon name, and choice
+badges. The browser setup page renders that metadata directly for step count,
+indexed progress, channel role badges, and surface preset cards.
+
 Arches is the seed, not the host identity. Each Arch is held up by the person or
 community running that appliance. Any app/factory Farcaster credential used by
 Arches may only request signer approval during setup; it must not become the FID

@@ -21,6 +21,10 @@ describe("buildSetupSession", () => {
     expect(session.completed).toBe(false);
     expect(findStep(session, "verify-farcaster")?.status).toBe("active");
     expect(findStep(session, "unlock-arch")?.status).toBe("blocked");
+    expect(session.steps.map((step) => step.displayIndex)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(findStep(session, "verify-farcaster")?.nextStepId).toBe("prepare-signer");
+    expect(findStep(session, "prepare-signer")?.previousStepId).toBe("verify-farcaster");
+    expect(findStep(session, "launch-appliance")?.icon).toBe("rocket");
   });
 
   test("carries requested unclaimed slug into Farcaster verification copy", () => {
@@ -82,10 +86,17 @@ describe("buildSetupSession", () => {
     expect(session.currentStepId).toBe("choose-community");
     expect(step?.status).toBe("active");
     expect(step?.fields[0].choices).toEqual([
-      { id: "anky", label: "/anky", description: "lead", data: { role: "lead" } },
+      {
+        id: "anky",
+        label: "/anky",
+        extraLabel: "lead",
+        description: "lead",
+        data: { role: "lead" },
+      },
       {
         id: "builders",
         label: "/builders",
+        extraLabel: "moderator",
         description: "Builders (moderator)",
         data: { role: "moderator" },
       },

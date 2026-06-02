@@ -8,6 +8,11 @@ The schema is intentionally renderer-neutral. A setup broker can return it as
 JSON, `scripts/install.sh` can render it in a terminal, and a browser setup page
 can render the same steps later.
 
+Like Discourse's wizard serializer, each step carries server-owned wizard
+metadata: zero-based `index`, one-based `displayIndex`, previous/next step ids,
+status, icon name, fields, choices, and choice badges. Renderers should display
+that metadata rather than inventing their own setup order.
+
 The schema enforces the Arches setup order:
 
 1. Verify Farcaster.

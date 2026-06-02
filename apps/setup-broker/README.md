@@ -119,6 +119,11 @@ The browser setup page renders active schema fields as forms that post to the
 same updater model. This keeps the terminal and browser setup surfaces aligned
 with the same server-defined setup session.
 
+The browser renderer also consumes the schema's Discourse-style wizard
+metadata: step index, display index, previous/next ids, status, icon name, and
+choice extra labels. This keeps the visible setup order and channel role badges
+server-owned instead of hard-coded in the browser shell.
+
 ## Setup Audit Events
 
 The broker records an in-memory audit trail for each setup session:

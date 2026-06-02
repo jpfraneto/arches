@@ -1667,6 +1667,18 @@ async function renderSetupHtml(
     .step.active .marker { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
     .step.blocked .marker { border-color: var(--blocked); color: var(--blocked); }
 
+    .step-title {
+      display: grid;
+      gap: 2px;
+    }
+
+    .step-meta {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+    }
+
     .events {
       border-top: 1px solid var(--line);
       margin-top: 28px;
@@ -1699,6 +1711,15 @@ async function renderSetupHtml(
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 28px;
+    }
+
+    .surface-kicker {
+      margin-bottom: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: 0;
+      text-transform: uppercase;
     }
 
     .description {
@@ -1750,7 +1771,29 @@ async function renderSetupHtml(
     .choice input { margin-top: 3px; }
     .choice.selected { border-color: var(--accent); background: var(--accent-soft); }
 
+    .choice-head {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
     .choice-title { font-weight: 650; }
+
+    .choice-badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 20px;
+      padding: 0 7px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: #fafafa;
+      font-size: 11px;
+      font-weight: 650;
+      text-transform: uppercase;
+    }
+
     .choice-desc, .field-desc { color: var(--muted); font-size: 13px; }
 
     .status {
@@ -1858,7 +1901,16 @@ async function renderSetupHtml(
       ${renderSetupEvents(events)}
     </aside>
     <section>
-      ${currentStep ? await renderCurrentStep(session.sessionId, currentStep, shouldPollFarcaster) : ""}
+      ${
+        currentStep
+          ? await renderCurrentStep(
+              session.sessionId,
+              currentStep,
+              session.steps.length,
+              shouldPollFarcaster,
+            )
+          : ""
+      }
       <div class="notice">Posting and composer unlock remain blocked until signer approval and Farcaster publishing are verified.</div>
     </section>
   </main>
@@ -1984,8 +2036,11 @@ function renderRequestedSlug(session: SetupSession): string {
 
 function renderProgressStep(step: SetupStep): string {
   return `<li class="step ${escapeHtml(step.status)}">
-    <span class="marker">${escapeHtml(statusGlyph(step.status))}</span>
-    <span>${escapeHtml(step.title)}</span>
+    <span class="marker">${escapeHtml(progressMarker(step))}</span>
+    <span class="step-title">
+      <span>${escapeHtml(step.title)}</span>
+      <span class="step-meta">${escapeHtml(step.icon ?? step.id)}</span>
+    </span>
   </li>`;
 }
 
@@ -2046,12 +2101,14 @@ function eventDetail(event: SetupAuditEvent): string {
 async function renderCurrentStep(
   sessionId: string,
   step: SetupStep,
+  totalSteps: number,
   shouldPollFarcaster = false,
 ): Promise<string> {
   const canSubmit = isSubmittableStep(step);
   const fields = await Promise.all(step.fields.map((field) => renderField(field, canSubmit)));
 
   return `<div class="surface step-surface-${escapeHtml(step.id)}">
+    <div class="surface-kicker">Step ${escapeHtml(String(step.displayIndex))} of ${escapeHtml(String(totalSteps))}</div>
     <h2>${escapeHtml(step.title)}</h2>
     <p class="description">${escapeHtml(step.description)}</p>
     <form method="post" action="/setup/${escapeHtml(sessionId)}/steps/${escapeHtml(step.id)}">
@@ -2101,7 +2158,10 @@ function renderChoiceField(field: SetupField, editable: boolean): string {
                   editable && !choice.disabled ? "" : " disabled"
                 }${selected ? " checked" : ""}${field.required ? " required" : ""}>
                 <div>
-                  <div class="choice-title">${escapeHtml(choice.label)}</div>
+                  <div class="choice-head">
+                    <span class="choice-title">${escapeHtml(choice.label)}</span>
+                    ${choice.extraLabel ? `<span class="choice-badge">${escapeHtml(choice.extraLabel)}</span>` : ""}
+                  </div>
                   ${choice.description ? `<div class="choice-desc">${escapeHtml(choice.description)}</div>` : ""}
                 </div>
               </div>`;
@@ -2252,6 +2312,11 @@ function statusGlyph(status: SetupStep["status"]): string {
     case "pending":
       return "";
   }
+}
+
+function progressMarker(step: SetupStep): string {
+  if (step.status === "completed" || step.status === "blocked") return statusGlyph(step.status);
+  return String(step.displayIndex);
 }
 
 function requestedSlugFromHost(hostHeader: string | undefined): string | undefined {

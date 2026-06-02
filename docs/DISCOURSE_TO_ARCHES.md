@@ -307,6 +307,11 @@ renderer-neutral setup steps, fields, choices, completion state, submission
 validation, a terminal renderer, and the product invariant that composer unlock
 remains blocked until Farcaster publishing has been verified.
 
+The schema now carries Discourse-like step metadata as well: `index`,
+`displayIndex`, `previousStepId`, `nextStepId`, status, icon name, fields,
+choices, and choice extra labels. That mirrors the useful part of Discourse's
+wizard serializers while keeping Arches' Farcaster-first setup contract.
+
 The broker audit trail is the first Arches equivalent of Discourse's wizard
 history logging. Discourse records completed wizard steps through user history
 and logs setting changes through server-side staff action logging. Arches should
@@ -330,8 +335,10 @@ starts with surface presets (`village`, `bulletin`, `library`), grammar presets
 (`open-casts`, `curated-updates`, `knowledge-base`), and theme presets
 (`daylight`, `high-contrast`, `night`).
 
-The browser setup renderer now preserves that UI model: the surface preset is a
-card chooser, while grammar and theme are select fields. This keeps the
+The browser setup renderer now preserves that UI model: the current step shows
+its server-owned step count, the sidebar shows indexed progress and step icons,
+channel choices can show role badges from the schema, and the surface preset is
+a card chooser while grammar and theme are select fields. This keeps the
 Discourse category-type-card idea while leaving Arches' setup schema, broker,
 Cloudflare routing, and appliance config as the underlying infra.
 
@@ -358,14 +365,17 @@ Cloudflare routing, and appliance config as the underlying infra.
 9. Add Arch config export from setup state (started in `apps/setup-broker`).
 10. Add community surface/grammar/theme presets (started in
    `packages/setup-schema` and exported by `apps/setup-broker`).
-11. Teach `scripts/install.sh` to call the broker when no flags are passed
+11. Add Discourse-like wizard step metadata and browser rendering for step
+   count, indexed progress, icons, and choice badges (started in
+   `packages/setup-schema` and `apps/setup-broker`).
+12. Teach `scripts/install.sh` to call the broker when no flags are passed
    (started with the terminal session handoff).
-12. Add unclaimed-subdomain page and wildcard routing (started in
+13. Add unclaimed-subdomain page and wildcard routing (started in
    `apps/setup-broker`).
-13. Add production signer request provider and appliance-side signer storage
+14. Add production signer request provider and appliance-side signer storage
    (provider boundary started in `apps/setup-broker`).
-14. Wire Hypersnap Lite publish probe.
-15. Enable posting only when the publish contract is confirmed.
+15. Wire Hypersnap Lite publish probe.
+16. Enable posting only when the publish contract is confirmed.
 
 ## Product Principle
 

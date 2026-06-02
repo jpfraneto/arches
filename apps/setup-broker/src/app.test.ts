@@ -418,7 +418,13 @@ describe("setup broker", () => {
     expect(body.events.at(-1).actorFid).toBe(18350);
     expect(body.events.at(-1).data.channelCount).toBe(1);
     expect(body.session.steps[2].fields[0].choices).toEqual([
-      { id: "anky", label: "/anky", description: "Anky (lead)", data: { role: "lead" } },
+      {
+        id: "anky",
+        label: "/anky",
+        extraLabel: "lead",
+        description: "Anky (lead)",
+        data: { role: "lead" },
+      },
     ]);
   });
 
@@ -746,6 +752,8 @@ describe("setup broker", () => {
     expect(response.status).toBe(200);
     expect(html).toContain("<title>Arches Setup</title>");
     expect(html).toContain("Current step");
+    expect(html).toContain("Step 1 of 9");
+    expect(html).toContain('<span class="step-meta">key</span>');
     expect(html).toContain("Verify Farcaster");
     expect(html).toContain("Setup Log");
     expect(html).toContain("session_created");
@@ -772,7 +780,7 @@ describe("setup broker", () => {
     expect(response.status).toBe(200);
     expect(html).toContain("Choose Community");
     expect(html).toContain("/anky");
-    expect(html).toContain("lead");
+    expect(html).toContain('<span class="choice-badge">lead</span>');
   });
 
   test("renders active schema fields as browser forms", async () => {
