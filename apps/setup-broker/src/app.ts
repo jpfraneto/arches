@@ -1789,6 +1789,27 @@ async function renderSetupHtml(
       margin-bottom: 28px;
     }
 
+    .summary {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel);
+      margin-bottom: 24px;
+      font-size: 12px;
+    }
+
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .summary-label { color: var(--muted); }
+    .summary-value { font-weight: 650; text-align: right; }
+    .summary-next { color: var(--muted); }
+
     .steps {
       list-style: none;
       padding: 0;
@@ -2068,6 +2089,7 @@ async function renderSetupHtml(
       <div class="session">${escapeHtml(session.sessionId)}</div>
       ${renderRequestedSlug(session)}
       <div class="session">Current step: ${escapeHtml(currentStep?.title ?? session.currentStepId)}</div>
+      ${renderSetupSummary(session)}
       <ol class="steps">
         ${session.steps.map(renderProgressStep).join("")}
       </ol>
@@ -2205,6 +2227,20 @@ function renderRequestedSlug(session: SetupSession): string {
   return session.requestedSlug
     ? `<div class="session">Requested Arch: ${escapeHtml(`${session.requestedSlug}.arches.lat`)}</div>`
     : "";
+}
+
+function renderSetupSummary(session: SetupSession): string {
+  return `<div class="summary">
+    <div class="summary-row">
+      <span class="summary-label">Progress</span>
+      <span class="summary-value">${escapeHtml(String(session.summary.completedStepCount))}/${escapeHtml(String(session.summary.totalStepCount))}</span>
+    </div>
+    <div class="summary-row">
+      <span class="summary-label">Readiness</span>
+      <span class="summary-value">${escapeHtml(session.summary.readiness)}</span>
+    </div>
+    <div class="summary-next">${escapeHtml(session.summary.nextAction)}</div>
+  </div>`;
 }
 
 function renderProgressStep(step: SetupStep): string {

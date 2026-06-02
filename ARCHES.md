@@ -280,6 +280,7 @@ Implemented scaffolding in this repo:
 - setup schema package in `packages/setup-schema`
 - setup broker scaffold in `apps/setup-broker`
 - terminal and browser setup rendering
+- server-derived setup summary/readiness rendering
 - generic current-step setup updater for schema-backed fields
 - Discourse-style setup step metadata, browser progress, and field-error rendering
 - Farcaster verification provider boundary with per-session nonce/domain

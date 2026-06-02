@@ -181,6 +181,10 @@ badges. The browser setup page renders that metadata directly for step count,
 indexed progress, channel role badges, surface preset cards, and inline field
 validation errors.
 
+Each setup response also includes a compact server-derived summary with
+readiness, progress count, blocked count, current step title, and next action.
+The terminal output and browser sidebar render the same summary.
+
 Arches is the seed, not the host identity. Each Arch is held up by the person or
 community running that appliance. Any app/factory Farcaster credential used by
 Arches may only request signer approval during setup; it must not become the FID

@@ -16,6 +16,7 @@ export type SurfacePreset = "village" | "bulletin" | "library";
 export type GrammarPreset = "open-casts" | "curated-updates" | "knowledge-base";
 export type ThemePreset = "daylight" | "high-contrast" | "night";
 export type StepStatus = "pending" | "active" | "completed" | "blocked";
+export type SetupReadiness = "in-progress" | "blocked" | "complete";
 
 export type SetupChoice = {
   id: string;
@@ -101,7 +102,17 @@ export type SetupSession = {
   start: SetupStepId;
   currentStepId: SetupStepId;
   completed: boolean;
+  summary: SetupSummary;
   steps: SetupStep[];
+};
+
+export type SetupSummary = {
+  readiness: SetupReadiness;
+  completedStepCount: number;
+  totalStepCount: number;
+  blockedStepCount: number;
+  currentStepTitle: string;
+  nextAction: string;
 };
 
 export type FieldValues = Record<string, string | undefined>;
@@ -208,14 +219,43 @@ export function buildSetupSession(state: SetupState): SetupSession {
   ]);
 
   const currentStepId = steps.find((step) => step.status !== "completed")?.id ?? "unlock-arch";
+  const completed = steps.every((step) => step.status === "completed");
 
   return {
     sessionId: state.sessionId,
     requestedSlug: state.requestedSlug,
     start,
     currentStepId,
-    completed: steps.every((step) => step.status === "completed"),
+    completed,
+    summary: buildSetupSummary(steps, currentStepId, completed),
     steps,
+  };
+}
+
+function buildSetupSummary(
+  steps: SetupStep[],
+  currentStepId: SetupStepId,
+  completed: boolean,
+): SetupSummary {
+  const currentStep = steps.find((step) => step.id === currentStepId) ?? steps[0];
+  const blockedStepCount = steps.filter((step) => step.status === "blocked").length;
+  const readiness: SetupReadiness = completed
+    ? "complete"
+    : currentStep?.status === "blocked"
+      ? "blocked"
+      : "in-progress";
+
+  return {
+    readiness,
+    completedStepCount: steps.filter((step) => step.status === "completed").length,
+    totalStepCount: steps.length,
+    blockedStepCount,
+    currentStepTitle: currentStep?.title ?? currentStepId,
+    nextAction: completed
+      ? "Setup is complete."
+      : currentStep?.status === "blocked"
+        ? `${currentStep.title} is blocked.`
+        : `Continue with ${currentStep?.title ?? currentStepId}.`,
   };
 }
 
@@ -308,6 +348,9 @@ export function renderTerminalSession(
   const lines = [
     `Arches setup: ${session.sessionId}`,
     `Current step: ${currentStep?.title ?? session.currentStepId}`,
+    `Progress: ${session.summary.completedStepCount}/${session.summary.totalStepCount} steps complete`,
+    `Readiness: ${session.summary.readiness}`,
+    `Next: ${session.summary.nextAction}`,
     "",
     ...session.steps
       .filter((step) => includePendingSteps || step.status !== "pending")

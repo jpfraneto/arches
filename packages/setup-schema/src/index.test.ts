@@ -20,6 +20,14 @@ describe("buildSetupSession", () => {
     expect(session.start).toBe("verify-farcaster");
     expect(session.currentStepId).toBe("verify-farcaster");
     expect(session.completed).toBe(false);
+    expect(session.summary).toEqual({
+      readiness: "in-progress",
+      completedStepCount: 0,
+      totalStepCount: 9,
+      blockedStepCount: 1,
+      currentStepTitle: "Verify Farcaster",
+      nextAction: "Continue with Verify Farcaster.",
+    });
     expect(findStep(session, "verify-farcaster")?.status).toBe("active");
     expect(findStep(session, "unlock-arch")?.status).toBe("blocked");
     expect(session.steps.map((step) => step.displayIndex)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
@@ -175,6 +183,14 @@ describe("buildSetupSession", () => {
 
     expect(session.completed).toBe(true);
     expect(session.currentStepId).toBe("unlock-arch");
+    expect(session.summary).toEqual({
+      readiness: "complete",
+      completedStepCount: 9,
+      totalStepCount: 9,
+      blockedStepCount: 0,
+      currentStepTitle: "Unlock Arch",
+      nextAction: "Setup is complete.",
+    });
   });
 });
 
@@ -281,6 +297,9 @@ describe("terminal rendering", () => {
 
     expect(renderTerminalSession(session)).toContain(`Arches setup: setup_8
 Current step: Choose Community
+Progress: 2/9 steps complete
+Readiness: in-progress
+Next: Continue with Choose Community.
 
 [x] Verify Farcaster
 [x] Prepare Signer

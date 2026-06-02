@@ -13,6 +13,11 @@ metadata: zero-based `index`, one-based `displayIndex`, previous/next step ids,
 status, icon name, fields, choices, and choice badges. Renderers should display
 that metadata rather than inventing their own setup order.
 
+Each setup session also carries a server-derived `summary` with readiness,
+completed step count, total step count, blocked step count, current step title,
+and next action. This gives terminal and browser renderers the same compact
+operator status instead of asking them to infer readiness differently.
+
 Completed steps can also carry provenance metadata: `completedAt`,
 `completedByFid`, `completionEventId`, and `completionEventType`. The setup
 broker derives those fields from audit events so renderers can show which

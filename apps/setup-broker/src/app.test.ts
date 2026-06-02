@@ -17,7 +17,17 @@ describe("setup broker", () => {
     expect(body.session.sessionId).toStartWith("setup_");
     expect(body.session.currentStepId).toBe("verify-farcaster");
     expect(body.session.completed).toBe(false);
+    expect(body.session.summary).toEqual({
+      readiness: "in-progress",
+      completedStepCount: 0,
+      totalStepCount: 9,
+      blockedStepCount: 1,
+      currentStepTitle: "Verify Farcaster",
+      nextAction: "Continue with Verify Farcaster.",
+    });
     expect(body.terminal).toContain("Arches setup: setup_");
+    expect(body.terminal).toContain("Progress: 0/9 steps complete");
+    expect(body.terminal).toContain("Readiness: in-progress");
     expect(body.terminal).toContain("[>] Verify Farcaster");
     expect(body.setupUrl).toStartWith("https://setup.arches.test/setup/setup_");
     expect(body.events).toHaveLength(1);
@@ -757,6 +767,9 @@ describe("setup broker", () => {
     expect(response.status).toBe(200);
     expect(html).toContain("<title>Arches Setup</title>");
     expect(html).toContain("Current step");
+    expect(html).toContain('<span class="summary-label">Progress</span>');
+    expect(html).toContain('<span class="summary-value">0/9</span>');
+    expect(html).toContain("Continue with Verify Farcaster.");
     expect(html).toContain("Step 1 of 9");
     expect(html).toContain('<span class="step-meta">key</span>');
     expect(html).toContain("Verify Farcaster");

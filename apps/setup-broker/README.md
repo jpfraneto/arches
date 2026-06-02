@@ -124,6 +124,11 @@ metadata: step index, display index, previous/next ids, status, icon name, and
 choice extra labels. This keeps the visible setup order and channel role badges
 server-owned instead of hard-coded in the browser shell.
 
+The session response includes a server-derived setup summary with readiness,
+progress count, blocked step count, current step title, and next action. The
+terminal renderer and browser sidebar both display that summary so the host can
+see setup status without reading the whole schema.
+
 When browser form validation fails, the broker re-renders the same setup session
 with field-level error descriptions instead of sending the host to a generic
 error page. JSON API callers still receive the normal structured error response.

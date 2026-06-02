@@ -311,6 +311,9 @@ The schema now carries Discourse-like step metadata as well: `index`,
 `displayIndex`, `previousStepId`, `nextStepId`, status, icon name, fields,
 choices, and choice extra labels. That mirrors the useful part of Discourse's
 wizard serializers while keeping Arches' Farcaster-first setup contract.
+It also carries a server-derived setup summary with readiness, progress count,
+blocked step count, current step title, and next action so terminal and browser
+renderers share the same operator status model.
 It also supports field-level error descriptions so browser submissions can stay
 inside the wizard when validation fails.
 
@@ -383,14 +386,16 @@ config as the underlying infra.
    count, indexed progress, icons, choice badges, and inline field errors
    (started in
    `packages/setup-schema` and `apps/setup-broker`).
-12. Teach `scripts/install.sh` to call the broker when no flags are passed
+12. Add server-derived setup summary/readiness for terminal and browser
+   renderers (started in `packages/setup-schema` and `apps/setup-broker`).
+13. Teach `scripts/install.sh` to call the broker when no flags are passed
    (started with the terminal session handoff).
-13. Add unclaimed-subdomain page and wildcard routing (started in
+14. Add unclaimed-subdomain page and wildcard routing (started in
    `apps/setup-broker`).
-14. Add production signer request provider and appliance-side signer storage
+15. Add production signer request provider and appliance-side signer storage
    (provider boundary started in `apps/setup-broker`).
-15. Wire Hypersnap Lite publish probe.
-16. Enable posting only when the publish contract is confirmed.
+16. Wire Hypersnap Lite publish probe.
+17. Enable posting only when the publish contract is confirmed.
 
 ## Product Principle
 
