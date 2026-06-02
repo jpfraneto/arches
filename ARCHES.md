@@ -281,6 +281,8 @@ Implemented scaffolding in this repo:
 - setup broker scaffold in `apps/setup-broker`
 - terminal and browser setup rendering
 - generic current-step setup updater for schema-backed fields
+- Farcaster verification provider boundary with per-session nonce/domain
+  challenge
 - Cloudflare Tunnel provider boundary and setup-session provisioning endpoint
 - in-memory setup audit events for broker actions
 - non-secret Arch config snapshot export from setup state
@@ -291,7 +293,7 @@ Implemented scaffolding in this repo:
 
 Not implemented yet:
 
-- production Farcaster QR verification
+- production Sign In with Farcaster verifier
 - signer request and signer storage flow
 - production-authenticated Cloudflare Tunnel provisioning behind the broker
 - persistent setup sessions, audit events, and reservations

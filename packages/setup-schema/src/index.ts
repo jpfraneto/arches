@@ -54,6 +54,8 @@ export type SetupState = {
   sessionId: string;
   requestedSlug?: string;
   farcasterQrUrl?: string;
+  farcasterNonce?: string;
+  farcasterDomain?: string;
   hostFid?: number;
   signerApproved?: boolean;
   eligibleChannels?: EligibleChannel[];

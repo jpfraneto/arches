@@ -4,9 +4,9 @@ This is the first broker scaffold for the Discourse-inspired Arches setup flow.
 It creates setup sessions and returns the shared setup schema plus terminal
 rendering from `packages/setup-schema`.
 
-The broker does not verify Farcaster identity yet. It deliberately returns `501`
-for the verification endpoint and does not accept manual admin FID input on the
-public API.
+The broker has a Farcaster verification provider boundary. The default provider
+returns `501`, so production identity verification is not wired yet, but the
+public API already rejects manual `fid`, `hostFid`, and `adminFid` claims.
 
 Run locally:
 
@@ -80,8 +80,9 @@ curl -fsSL http://localhost:3020/api/setup/sessions/SESSION_ID/events
 
 Events are also included in the normal session response and rendered as a
 compact setup log in the browser setup sidebar. Current events include session
-creation, channel refresh, step submission, slug reservation, tunnel
-provisioning, tunnel provisioning failure, and local dev-state mutation.
+creation, Farcaster verification, channel refresh, step submission, slug
+reservation, tunnel provisioning, tunnel provisioning failure, and local
+dev-state mutation.
 
 This mirrors the useful Discourse pattern where wizard updates are logged by the
 server after the step succeeds. The scaffold is intentionally in-memory for now;

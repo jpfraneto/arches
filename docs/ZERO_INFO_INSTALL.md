@@ -166,8 +166,10 @@ The missing production component is a setup broker. It should coordinate:
 
 The broker should not own the Arch identity. The appliance host owns the local
 process and the signer that publishes to Farcaster. The installer should
-eventually call this broker when it receives no arguments. Until that exists,
-`tunnel-local` is explicit and requires a tunnel token.
+eventually call this broker when it receives no arguments. The current setup
+broker has a Farcaster verification provider boundary with a per-session
+nonce/domain challenge, but its default verifier still fails closed with `501`
+until a production SIWF verifier is configured.
 
 ## Broker Provisioning Scaffold
 

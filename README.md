@@ -89,8 +89,10 @@ ARCHES_SETUP_BROKER_URL=http://localhost:3020 bash scripts/install.sh
 ```
 
 The broker returns the Discourse-style setup state as terminal text plus a
-browser setup URL. Farcaster verification still returns `501`, so this path does
-not generate appliance files or enable posting yet.
+browser setup URL. It now has a Farcaster verification provider boundary with a
+per-session nonce/domain challenge. The default provider still returns `501`, so
+this path does not generate appliance files or enable posting until a real SIWF
+verifier is configured.
 
 The setup broker also renders unclaimed `*.arches.lat` hostnames as creation
 invitations. Visiting an unclaimed Arch should point the host toward Farcaster

@@ -288,8 +288,9 @@ hostnames as setup invitations, includes an optional Neynar channel eligibility
 adapter, includes a generic current-step updater for schema-backed browser/API
 submissions, includes the first Cloudflare Tunnel provisioning provider boundary,
 records an in-memory setup audit trail for successful setup actions, and
-intentionally returns `501` for Farcaster verification instead of accepting a
-manual admin FID.
+includes a Farcaster verification provider boundary that rejects manual identity
+claims. The default verification provider intentionally returns `501` until a
+real Sign In with Farcaster verifier is configured.
 
 `packages/setup-schema` now contains the first concrete version of this shape:
 renderer-neutral setup steps, fields, choices, completion state, submission
@@ -331,7 +332,8 @@ Cloudflare routing, and appliance config as the underlying infra.
    (started in `apps/setup-broker`).
 3. Add browser/API step updater for the current active setup step (started in
    `apps/setup-broker`).
-4. Add Farcaster QR verification and host FID derivation.
+4. Add Farcaster QR verification and host FID derivation (provider boundary
+   started in `apps/setup-broker`; production verifier still needed).
 5. Add Neynar channel lookup for eligible channels (adapter started in
    `apps/setup-broker`).
 6. Add slug reservation for `*.arches.lat` (started with in-memory reservation

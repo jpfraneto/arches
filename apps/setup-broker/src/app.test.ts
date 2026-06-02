@@ -21,7 +21,12 @@ describe("setup broker", () => {
     expect(body.setupUrl).toStartWith("https://setup.arches.test/setup/setup_");
     expect(body.events).toHaveLength(1);
     expect(body.events[0].type).toBe("session_created");
-    expect(body.next.verification).toBe("not_implemented");
+    expect(body.next.verification).toBe("pending");
+    expect(body.next.verificationUrl).toStartWith(
+      "https://setup.arches.test/api/setup/sessions/setup_",
+    );
+    expect(body.next.nonce).toHaveLength(17);
+    expect(body.next.domain).toBe("setup.arches.test");
   });
 
   test("serves an existing setup session and terminal text", async () => {
@@ -50,18 +55,93 @@ describe("setup broker", () => {
     expect(text).toContain("Browser setup: https://setup.arches.test/setup/setup_");
   });
 
-  test("does not fake Farcaster verification", async () => {
+  test("does not fake Farcaster verification when no verifier is configured", async () => {
     const app = createSetupBrokerApp();
     const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
     const created = await createResponse.json();
     const response = await app.request(
       `/api/setup/sessions/${created.session.sessionId}/farcaster/verify`,
-      { method: "POST" },
+      {
+        method: "POST",
+        body: JSON.stringify({
+          nonce: created.next.nonce,
+          message: "signed SIWF message",
+          signature: "0xsignature",
+        }),
+        headers: { "content-type": "application/json" },
+      },
     );
     const body = await response.json();
 
     expect(response.status).toBe(501);
-    expect(body.message).toContain("Manual admin FID input is rejected.");
+    expect(body.message).toContain("Farcaster verification is not configured");
+  });
+
+  test("rejects manual FID claims in Farcaster verification payloads", async () => {
+    const app = createSetupBrokerApp({
+      farcasterVerificationProvider: {
+        async verifyHostSignature() {
+          throw new Error("manual FID payload should fail before provider is called");
+        },
+      },
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/farcaster/verify`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          fid: 18350,
+          nonce: created.next.nonce,
+          message: "signed SIWF message",
+          signature: "0xsignature",
+        }),
+        headers: { "content-type": "application/json" },
+      },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.message).toContain("Do not send fid");
+  });
+
+  test("derives host FID from a verified Farcaster signature provider", async () => {
+    const app = createSetupBrokerApp({
+      publicOrigin: "https://setup.arches.test",
+      farcasterVerificationProvider: {
+        async verifyHostSignature(request) {
+          expect(request.sessionId).toStartWith("setup_");
+          expect(request.domain).toBe("setup.arches.test");
+          expect(request.message).toBe("signed SIWF message");
+          expect(request.signature).toBe("0xsignature");
+          return { fid: 18350, username: "anky", displayName: "Anky" };
+        },
+      },
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/farcaster/verify`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          nonce: created.next.nonce,
+          message: "signed SIWF message",
+          signature: "0xsignature",
+        }),
+        headers: { "content-type": "application/json" },
+      },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.session.currentStepId).toBe("prepare-signer");
+    expect(body.session.steps[0].fields[0].description).toBe("Verified FID 18350.");
+    expect(body.next.message).toContain("FID 18350 is verified");
+    expect(body.events.at(-1).type).toBe("farcaster_verified");
+    expect(body.events.at(-1).actorFid).toBe(18350);
+    expect(body.events.at(-1).data.username).toBe("anky");
   });
 
   test("requires host FID before refreshing eligible channels", async () => {

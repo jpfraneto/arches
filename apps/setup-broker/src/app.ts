@@ -11,6 +11,12 @@ import {
   type TunnelProvisioningProvider,
 } from "./tunnel-provisioning";
 import {
+  FarcasterVerificationError,
+  NoopFarcasterVerificationProvider,
+  type FarcasterVerificationProvider,
+  type FarcasterVerificationResult,
+} from "./farcaster-verification";
+import {
   buildSetupSession,
   findStep,
   renderTerminalSession,
@@ -37,6 +43,7 @@ type SessionRecord = {
 type SetupAuditEventType =
   | "session_created"
   | "dev_state_updated"
+  | "farcaster_verified"
   | "channels_refreshed"
   | "step_submitted"
   | "slug_reserved"
@@ -57,6 +64,7 @@ type BrokerOptions = {
   allowDevStateUpdates?: boolean;
   channelEligibilityProvider?: ChannelEligibilityProvider;
   tunnelProvisioningProvider?: TunnelProvisioningProvider;
+  farcasterVerificationProvider?: FarcasterVerificationProvider;
   publicOrigin?: string;
 };
 
@@ -66,7 +74,10 @@ type SessionResponse = {
   setupUrl: string;
   events: SetupAuditEvent[];
   next: {
-    verification: "not_implemented";
+    verification: "pending";
+    verificationUrl: string;
+    nonce?: string;
+    domain?: string;
     message: string;
   };
 };
@@ -83,6 +94,8 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     options.channelEligibilityProvider ?? createChannelEligibilityProvider({});
   const tunnelProvisioningProvider =
     options.tunnelProvisioningProvider ?? createTunnelProvisioningProvider({});
+  const farcasterVerificationProvider =
+    options.farcasterVerificationProvider ?? new NoopFarcasterVerificationProvider();
 
   app.use(
     "*",
@@ -158,18 +171,59 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     return c.text(renderTerminalSession(buildSetupSession(record.state)));
   });
 
-  app.post("/api/setup/sessions/:sessionId/farcaster/verify", (c) => {
+  app.post("/api/setup/sessions/:sessionId/farcaster/verify", async (c) => {
+    const sessionId = c.req.param("sessionId");
     const record = sessions.get(c.req.param("sessionId"));
     if (!record) return c.json({ error: "setup session not found" }, 404);
 
-    return c.json(
-      {
-        error: "farcaster verification is not implemented yet",
-        message:
-          "The setup broker will derive the host FID from a verified Farcaster signature. Manual admin FID input is rejected.",
-      },
-      501,
-    );
+    const body = await c.req.json().catch(() => null);
+    if (!isObject(body)) return c.json({ error: "verification body must be an object" }, 400);
+
+    const request = farcasterVerificationRequest(record.state, body);
+    if (!request.ok) {
+      return c.json({ error: request.error, message: request.message }, request.status);
+    }
+
+    try {
+      const verifiedHost = await farcasterVerificationProvider.verifyHostSignature(request.value);
+      const result = applyFarcasterVerification(record.state, verifiedHost);
+      if (!result.ok) return c.json({ error: result.error, message: result.message }, result.status);
+
+      const updatedRecord = withSetupEvent(
+        {
+          ...record,
+          state: result.state,
+          updatedAt: new Date().toISOString(),
+        },
+        "farcaster_verified",
+        {
+          actorFid: verifiedHost.fid,
+          data: {
+            fid: verifiedHost.fid,
+            username: verifiedHost.username,
+            displayName: verifiedHost.displayName,
+          },
+        },
+      );
+      sessions.set(sessionId, updatedRecord);
+
+      return c.json(sessionResponse(updatedRecord, publicOrigin));
+    } catch (error) {
+      if (error instanceof FarcasterVerificationError) {
+        return c.json(
+          { error: "farcaster verification failed", message: error.message },
+          error.status,
+        );
+      }
+
+      return c.json(
+        {
+          error: "farcaster verification failed",
+          message: "The setup broker could not verify the Farcaster signature.",
+        },
+        502,
+      );
+    }
   });
 
   app.post("/api/setup/sessions/:sessionId/channels/refresh", async (c) => {
@@ -467,10 +521,13 @@ export function resetSetupBrokerSessionsForTests() {
 function createSetupSession(publicOrigin: string, requestedSlug?: string): SetupState {
   const sessionId = createSessionId();
   const now = new Date().toISOString();
+  const verificationUrl = `${publicOrigin}/api/setup/sessions/${sessionId}/farcaster/verify`;
   const state: SetupState = {
     sessionId,
     requestedSlug,
-    farcasterQrUrl: `${publicOrigin}/api/setup/sessions/${sessionId}/farcaster/verify`,
+    farcasterQrUrl: verificationUrl,
+    farcasterNonce: createFarcasterNonce(),
+    farcasterDomain: originHost(publicOrigin),
   };
 
   sessions.set(sessionId, {
@@ -490,6 +547,7 @@ function createSetupSession(publicOrigin: string, requestedSlug?: string): Setup
 function sessionResponse(record: SessionRecord, publicOrigin: string): SessionResponse {
   const state = record.state;
   const session = buildSetupSession(state);
+  const verificationUrl = `${publicOrigin}/api/setup/sessions/${state.sessionId}/farcaster/verify`;
 
   return {
     session,
@@ -497,9 +555,13 @@ function sessionResponse(record: SessionRecord, publicOrigin: string): SessionRe
     setupUrl: `${publicOrigin}/setup/${state.sessionId}`,
     events: record.events,
     next: {
-      verification: "not_implemented",
-      message:
-        "Farcaster QR verification is not wired yet. Posting and composer unlock remain blocked.",
+      verification: "pending",
+      verificationUrl,
+      nonce: state.farcasterNonce,
+      domain: state.farcasterDomain,
+      message: state.hostFid
+        ? `Farcaster host FID ${state.hostFid} is verified.`
+        : "Verify a Sign In with Farcaster signature. Manual admin FID input is rejected.",
     },
   };
 }
@@ -510,6 +572,18 @@ function createSessionId(): string {
 
 function createEventId(): string {
   return `event_${crypto.randomUUID()}`;
+}
+
+function createFarcasterNonce(): string {
+  return crypto.randomUUID().replaceAll("-", "").slice(0, 17);
+}
+
+function originHost(publicOrigin: string): string {
+  try {
+    return new URL(publicOrigin).host;
+  } catch {
+    return "localhost";
+  }
 }
 
 function createSetupEvent(
@@ -570,6 +644,133 @@ function removeUndefinedData(
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+type VerificationRequestResult =
+  | {
+      ok: true;
+      value: {
+        sessionId: string;
+        nonce: string;
+        domain: string;
+        message: string;
+        signature: string;
+      };
+    }
+  | {
+      ok: false;
+      status: 400 | 409;
+      error: string;
+      message: string;
+    };
+
+function farcasterVerificationRequest(
+  state: SetupState,
+  body: Record<string, unknown>,
+): VerificationRequestResult {
+  if ("fid" in body || "hostFid" in body || "adminFid" in body) {
+    return {
+      ok: false,
+      status: 400,
+      error: "manual identity claim rejected",
+      message:
+        "Do not send fid, hostFid, or adminFid. The setup broker derives the host FID from the verified Farcaster signature.",
+    };
+  }
+
+  const nonce = typeof body.nonce === "string" ? body.nonce.trim() : "";
+  const message = typeof body.message === "string" ? body.message.trim() : "";
+  const signature = typeof body.signature === "string" ? body.signature.trim() : "";
+
+  if (!state.farcasterNonce || !state.farcasterDomain) {
+    return {
+      ok: false,
+      status: 409,
+      error: "verification challenge missing",
+      message: "This setup session does not have a Farcaster verification challenge.",
+    };
+  }
+
+  if (!nonce || nonce !== state.farcasterNonce) {
+    return {
+      ok: false,
+      status: 400,
+      error: "invalid verification nonce",
+      message: "The Farcaster verification nonce must match this setup session.",
+    };
+  }
+
+  if (!message || !signature) {
+    return {
+      ok: false,
+      status: 400,
+      error: "signature required",
+      message: "Farcaster verification requires a SIWF message and signature.",
+    };
+  }
+
+  return {
+    ok: true,
+    value: {
+      sessionId: state.sessionId,
+      nonce,
+      domain: state.farcasterDomain,
+      message,
+      signature,
+    },
+  };
+}
+
+type VerificationStateResult =
+  | {
+      ok: true;
+      state: SetupState;
+    }
+  | {
+      ok: false;
+      status: 400;
+      error: string;
+      message: string;
+    };
+
+function applyFarcasterVerification(
+  state: SetupState,
+  verifiedHost: FarcasterVerificationResult,
+): VerificationStateResult {
+  if (!Number.isInteger(verifiedHost.fid) || verifiedHost.fid <= 0) {
+    return {
+      ok: false,
+      status: 400,
+      error: "invalid verified fid",
+      message: "The Farcaster verification provider must return a positive integer FID.",
+    };
+  }
+
+  return {
+    ok: true,
+    state: {
+      ...state,
+      hostFid: verifiedHost.fid,
+      signerApproved: undefined,
+      eligibleChannels: undefined,
+      selectedChannelSlug: undefined,
+      reservedSlug: undefined,
+      domain: undefined,
+      hostingMode: undefined,
+      surfacePreset: undefined,
+      grammarPreset: undefined,
+      themePreset: undefined,
+      surfaceTitle: undefined,
+      provenanceLabel: undefined,
+      surfaceConfigured: undefined,
+      tunnelId: undefined,
+      tunnelProvisioned: undefined,
+      applianceLaunched: undefined,
+      installCommand: undefined,
+      publishingVerified: undefined,
+      composerUnlocked: undefined,
+    },
+  };
 }
 
 type ReservationResult =
@@ -1451,6 +1652,8 @@ function eventDetail(event: SetupAuditEvent): string {
       return `${actor} created setup`;
     case "dev_state_updated":
       return "dev-only state update";
+    case "farcaster_verified":
+      return `${actor} verified Farcaster`;
     case "channels_refreshed":
       return `${actor} refreshed${count} channel choices`;
     case "step_submitted":
