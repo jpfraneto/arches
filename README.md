@@ -187,7 +187,9 @@ badges. It also carries active step actions such as signer approval, eligible
 channel refresh, tunnel provisioning, and Arch config export. The browser setup
 page renders that metadata directly for step count, indexed progress, channel
 role badges, surface preset cards, inline field validation errors, and
-provider-backed action buttons.
+provider-backed action buttons. Browser action buttons post through the generic
+setup action controller at `/setup/:sessionId/actions/:actionId`; the broker
+only executes actions present on the current active server-defined step.
 
 Each setup response also includes a compact server-derived summary with
 readiness, progress count, blocked count, current step title, and next action.

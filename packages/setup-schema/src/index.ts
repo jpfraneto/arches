@@ -452,14 +452,14 @@ function prepareSignerStep(state: SetupState): SetupStepDraft {
                   id: "check-signer-approval",
                   label: "Check signer approval",
                   method: "post",
-                  path: "signer/status",
+                  path: "actions/check-signer-approval",
                   description: "Poll the provider until the host-approved signer is verified.",
                 }
               : {
                   id: "request-signer-approval",
                   label: "Request signer approval",
                   method: "post",
-                  path: "signer/request",
+                  path: "actions/request-signer-approval",
                   description: "Create a provider-backed signer approval request for this host FID.",
                 },
           ]
@@ -507,7 +507,7 @@ function chooseCommunityStep(state: SetupState): SetupStepDraft {
               id: "refresh-eligible-channels",
               label: "Refresh eligible channels",
               method: "post",
-              path: "channels/refresh",
+              path: "actions/refresh-eligible-channels",
               description: "Reload channels the verified host FID can lead or moderate.",
             },
           ]
@@ -656,14 +656,14 @@ function launchApplianceStep(state: SetupState): SetupStepDraft {
                   id: "provision-tunnel",
                   label: "Provision tunnel",
                   method: "post",
-                  path: "tunnel/provision",
+                  path: "actions/provision-tunnel",
                   description: "Create the Cloudflare Tunnel route for this Arch hostname.",
                 }
               : {
                   id: "export-arch-config",
                   label: "Export Arch config",
                   method: "post",
-                  path: "arch/config",
+                  path: "actions/export-arch-config",
                   description: "Render the non-secret appliance config from verified setup state.",
                 },
           ]

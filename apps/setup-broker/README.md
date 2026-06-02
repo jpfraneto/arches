@@ -122,15 +122,26 @@ protocol proof still return explicit errors instead of faking progress:
 - `verify-publishing` requires a Hypersnap Lite/Farcaster publish probe.
 
 The browser setup page renders active schema fields as forms that post to the
-same updater model. This keeps the terminal and browser setup surfaces aligned
-with the same server-defined setup session.
+same updater model. It renders active schema actions as forms that post to the
+generic action controller:
+
+```bash
+curl -fsSL -X POST \
+  http://localhost:3020/api/setup/sessions/SESSION_ID/actions/refresh-eligible-channels
+```
+
+The action controller only executes actions exposed by the current active setup
+step. This keeps the terminal and browser setup surfaces aligned with the same
+server-defined setup session.
 
 The browser renderer also consumes the schema's Discourse-style wizard
 metadata: step index, display index, previous/next ids, status, icon name, and
 choice extra labels. It also renders the schema's active step actions, so
 buttons such as `Request signer approval`, `Refresh eligible channels`,
-`Provision tunnel`, and `Export Arch config` are server-owned wizard data
-instead of hard-coded browser branches.
+`Provision tunnel`, and `Export Arch config` are server-owned wizard data. The
+browser submits those buttons to `/setup/:sessionId/actions/:actionId`; the
+broker validates that the action belongs to the current active step before
+running the underlying provider operation.
 
 The session response includes a server-derived setup summary with readiness,
 progress count, blocked step count, current step title, and next action. The

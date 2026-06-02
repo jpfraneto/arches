@@ -400,7 +400,9 @@ describe("setup broker", () => {
 
     expect(response.status).toBe(200);
     expect(html).toContain("Prepare Signer");
-    expect(html).toContain(`action="/setup/${created.session.sessionId}/signer/request"`);
+    expect(html).toContain(
+      `action="/setup/${created.session.sessionId}/actions/request-signer-approval"`,
+    );
     expect(html).toContain("Request signer approval");
   });
 
@@ -418,7 +420,7 @@ describe("setup broker", () => {
     });
 
     const requestResponse = await app.request(
-      `/setup/${created.session.sessionId}/signer/request`,
+      `/setup/${created.session.sessionId}/actions/request-signer-approval`,
       { method: "POST", redirect: "manual" },
     );
     const sessionResponse = await app.request(`/api/setup/sessions/${created.session.sessionId}`);
@@ -433,12 +435,56 @@ describe("setup broker", () => {
       "farcaster://signer-request?token=signer_123",
     );
     expect(body.events.at(-1).type).toBe("signer_request_created");
-    expect(html).toContain(`action="/setup/${created.session.sessionId}/signer/status"`);
+    expect(html).toContain(
+      `action="/setup/${created.session.sessionId}/actions/check-signer-approval"`,
+    );
     expect(html).toContain("Check signer approval");
     expect(html).toContain("farcaster://signer-request?token=signer_123");
     expect(JSON.stringify(body)).not.toContain("privateKey");
     expect(JSON.stringify(body)).not.toContain("signerPrivateKey");
     expect(JSON.stringify(body)).not.toContain("mnemonic");
+  });
+
+  test("executes a current schema action through the generic API endpoint", async () => {
+    const app = createSetupBrokerApp({
+      allowDevStateUpdates: true,
+      signerApprovalProvider: signerApprovalProvider({ state: "pending" }),
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({ hostFid: 18350 }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/actions/request-signer-approval`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.session.currentStepId).toBe("prepare-signer");
+    expect(body.session.steps[1].actions[0].id).toBe("check-signer-approval");
+    expect(body.events.at(-1).type).toBe("signer_request_created");
+    expect(JSON.stringify(body)).not.toContain("privateKey");
+    expect(JSON.stringify(body)).not.toContain("mnemonic");
+  });
+
+  test("rejects generic setup actions that are not on the current active step", async () => {
+    const app = createSetupBrokerApp();
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/actions/export-arch-config`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.message).toContain("not available on the current active setup step");
   });
 
   test("polls signer approval from the browser wizard", async () => {
@@ -457,13 +503,13 @@ describe("setup broker", () => {
       body: JSON.stringify({ hostFid: 18350 }),
       headers: { "content-type": "application/json" },
     });
-    await app.request(`/setup/${created.session.sessionId}/signer/request`, {
+    await app.request(`/setup/${created.session.sessionId}/actions/request-signer-approval`, {
       method: "POST",
       redirect: "manual",
     });
 
     const statusResponse = await app.request(
-      `/setup/${created.session.sessionId}/signer/status`,
+      `/setup/${created.session.sessionId}/actions/check-signer-approval`,
       { method: "POST", redirect: "manual" },
     );
     const sessionResponse = await app.request(`/api/setup/sessions/${created.session.sessionId}`);
@@ -908,7 +954,7 @@ describe("setup broker", () => {
     expect(response.status).toBe(200);
     expect(html).toContain("Choose Community");
     expect(html).toContain(
-      `action="/setup/${created.session.sessionId}/channels/refresh"`,
+      `action="/setup/${created.session.sessionId}/actions/refresh-eligible-channels"`,
     );
     expect(html).toContain("<button type=\"submit\">Refresh eligible channels</button>");
     expect(html).not.toContain('name="adminFid"');
@@ -933,7 +979,7 @@ describe("setup broker", () => {
     });
 
     const response = await app.request(
-      `/setup/${created.session.sessionId}/channels/refresh`,
+      `/setup/${created.session.sessionId}/actions/refresh-eligible-channels`,
       { method: "POST", redirect: "manual" },
     );
     const sessionResponse = await app.request(`/api/setup/sessions/${created.session.sessionId}`);
@@ -1241,10 +1287,13 @@ describe("setup broker", () => {
 
     const pageResponse = await app.request(`/setup/${created.session.sessionId}`);
     const pageHtml = await pageResponse.text();
-    const response = await app.request(`/setup/${created.session.sessionId}/tunnel/provision`, {
-      method: "POST",
-      redirect: "manual",
-    });
+    const response = await app.request(
+      `/setup/${created.session.sessionId}/actions/provision-tunnel`,
+      {
+        method: "POST",
+        redirect: "manual",
+      },
+    );
     const sessionResponse = await app.request(`/api/setup/sessions/${created.session.sessionId}`);
     const body = await sessionResponse.json();
     const updatedPageResponse = await app.request(`/setup/${created.session.sessionId}`);
@@ -1252,7 +1301,9 @@ describe("setup broker", () => {
 
     expect(pageResponse.status).toBe(200);
     expect(pageHtml).toContain("Launch Appliance");
-    expect(pageHtml).toContain(`action="/setup/${created.session.sessionId}/tunnel/provision"`);
+    expect(pageHtml).toContain(
+      `action="/setup/${created.session.sessionId}/actions/provision-tunnel"`,
+    );
     expect(pageHtml).toContain("Provision tunnel");
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(`/setup/${created.session.sessionId}`);
@@ -1262,14 +1313,14 @@ describe("setup broker", () => {
         id: "export-arch-config",
         label: "Export Arch config",
         method: "post",
-        path: "arch/config",
+        path: "actions/export-arch-config",
         description: "Render the non-secret appliance config from verified setup state.",
       },
     ]);
     expect(body.events.at(-1).type).toBe("tunnel_provisioned");
     expect(updatedPageResponse.status).toBe(200);
     expect(updatedPageHtml).toContain(
-      `action="/setup/${created.session.sessionId}/arch/config"`,
+      `action="/setup/${created.session.sessionId}/actions/export-arch-config"`,
     );
     expect(updatedPageHtml).toContain("Export Arch config");
     expect(JSON.stringify(body.events)).not.toContain("fake-token");
@@ -1415,16 +1466,22 @@ describe("setup broker", () => {
 
     const pageResponse = await app.request(`/setup/${created.session.sessionId}`);
     const pageHtml = await pageResponse.text();
-    const exportResponse = await app.request(`/setup/${created.session.sessionId}/arch/config`, {
-      method: "POST",
-      redirect: "manual",
-    });
+    const exportResponse = await app.request(
+      `/setup/${created.session.sessionId}/actions/export-arch-config`,
+      {
+        method: "POST",
+        redirect: "manual",
+      },
+    );
     const sessionResponse = await app.request(`/api/setup/sessions/${created.session.sessionId}`);
     const body = await sessionResponse.json();
     const updatedPageResponse = await app.request(`/setup/${created.session.sessionId}`);
     const updatedPageHtml = await updatedPageResponse.text();
 
     expect(pageResponse.status).toBe(200);
+    expect(pageHtml).toContain(
+      `action="/setup/${created.session.sessionId}/actions/export-arch-config"`,
+    );
     expect(pageHtml).toContain("Export Arch config");
     expect(exportResponse.status).toBe(303);
     expect(exportResponse.headers.get("location")).toBe(`/setup/${created.session.sessionId}`);

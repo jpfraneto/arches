@@ -63,7 +63,7 @@ describe("buildSetupSession", () => {
         id: "check-signer-approval",
         label: "Check signer approval",
         method: "post",
-        path: "signer/status",
+        path: "actions/check-signer-approval",
         description: "Poll the provider until the host-approved signer is verified.",
       },
     ]);
@@ -109,7 +109,7 @@ describe("buildSetupSession", () => {
         id: "refresh-eligible-channels",
         label: "Refresh eligible channels",
         method: "post",
-        path: "channels/refresh",
+        path: "actions/refresh-eligible-channels",
         description: "Reload channels the verified host FID can lead or moderate.",
       },
     ]);
@@ -215,7 +215,7 @@ describe("buildSetupSession", () => {
         id: "provision-tunnel",
         label: "Provision tunnel",
         method: "post",
-        path: "tunnel/provision",
+        path: "actions/provision-tunnel",
         description: "Create the Cloudflare Tunnel route for this Arch hostname.",
       },
     ]);
@@ -224,7 +224,7 @@ describe("buildSetupSession", () => {
         id: "export-arch-config",
         label: "Export Arch config",
         method: "post",
-        path: "arch/config",
+        path: "actions/export-arch-config",
         description: "Render the non-secret appliance config from verified setup state.",
       },
     ]);

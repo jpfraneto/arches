@@ -41,6 +41,7 @@ import {
   type SetupSession,
   type SetupState,
   type SetupStep,
+  type SetupStepAction,
   type SetupStepId,
   type SurfacePreset,
   type ThemePreset,
@@ -120,6 +121,18 @@ type SetupActionResult =
 type SignerActionResult = SetupActionResult;
 type ChannelRefreshResult = SetupActionResult;
 type TunnelProvisionResult = SetupActionResult;
+
+type ActiveActionResult =
+  | {
+      ok: true;
+      action: SetupStepAction;
+    }
+  | {
+      ok: false;
+      status: 404 | 409;
+      error: string;
+      message: string;
+    };
 
 const sessions = new Map<string, SessionRecord>();
 const slugReservations = new Map<string, string>();
@@ -681,15 +694,10 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
 
   app.post("/api/setup/sessions/:sessionId/arch/config", (c) => {
     const sessionId = c.req.param("sessionId");
-    const record = sessions.get(sessionId);
-    if (!record) return c.json({ error: "setup session not found" }, 404);
-
-    const result = exportArchConfig(record);
+    const result = exportArchConfigForSession(sessionId);
     if (!result.ok) {
       return c.json({ error: result.error, message: result.message }, result.status);
     }
-
-    sessions.set(sessionId, result.record);
 
     return c.json({
       config: result.config,
@@ -699,15 +707,100 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     });
   });
 
-  app.post("/setup/:sessionId/arch/config", (c) => {
-    const sessionId = c.req.param("sessionId");
+  function exportArchConfigForSession(
+    sessionId: string,
+  ): ArchConfigExportResult {
     const record = sessions.get(sessionId);
-    if (!record) return c.html(renderMissingSessionHtml(), 404);
+    if (!record) {
+      return {
+        ok: false,
+        status: 404,
+        error: "setup session not found",
+        message: "Setup session not found.",
+      };
+    }
 
     const result = exportArchConfig(record);
-    if (!result.ok) return c.html(renderStepErrorHtml(result.message), result.status);
+    if (!result.ok) return result;
 
     sessions.set(sessionId, result.record);
+
+    return result;
+  }
+
+  function activeActionForSession(
+    sessionId: string,
+    actionId: string,
+  ): ActiveActionResult {
+    const record = sessions.get(sessionId);
+    if (!record) {
+      return {
+        ok: false,
+        status: 404,
+        error: "setup session not found",
+        message: "Setup session not found.",
+      };
+    }
+
+    const session = setupSessionWithProvenance(record);
+    const currentStep = findStep(session, session.currentStepId);
+    const action = currentStep?.actions?.find((candidate) => candidate.id === actionId);
+
+    if (!action) {
+      return {
+        ok: false,
+        status: 409,
+        error: "setup action unavailable",
+        message:
+          "The requested setup action is not available on the current active setup step.",
+      };
+    }
+
+    if (action.disabled) {
+      return {
+        ok: false,
+        status: 409,
+        error: "setup action disabled",
+        message: "The requested setup action is currently disabled.",
+      };
+    }
+
+    return { ok: true, action };
+  }
+
+  async function executeSetupActionForSession(
+    sessionId: string,
+    actionId: string,
+  ): Promise<SetupActionResult> {
+    const activeAction = activeActionForSession(sessionId, actionId);
+    if (!activeAction.ok) return activeAction;
+
+    switch (activeAction.action.id) {
+      case "request-signer-approval":
+        return createSignerRequestForSession(sessionId);
+      case "check-signer-approval":
+        return pollSignerStatusForSession(sessionId);
+      case "refresh-eligible-channels":
+        return refreshChannelsForSession(sessionId);
+      case "provision-tunnel":
+        return provisionTunnelForSession(sessionId);
+      case "export-arch-config":
+        return exportArchConfigForSession(sessionId);
+    }
+  }
+
+  app.post("/api/setup/sessions/:sessionId/actions/:actionId", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const result = await executeSetupActionForSession(sessionId, c.req.param("actionId"));
+    if (!result.ok) return c.json({ error: result.error, message: result.message }, result.status);
+
+    return c.json(sessionResponse(result.record, publicOrigin));
+  });
+
+  app.post("/setup/:sessionId/arch/config", (c) => {
+    const sessionId = c.req.param("sessionId");
+    const result = exportArchConfigForSession(sessionId);
+    if (!result.ok) return c.html(renderStepErrorHtml(result.message), result.status);
 
     return c.redirect(`/setup/${sessionId}`, 303);
   });
@@ -739,6 +832,14 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
   app.post("/setup/:sessionId/tunnel/provision", async (c) => {
     const sessionId = c.req.param("sessionId");
     const result = await provisionTunnelForSession(sessionId);
+    if (!result.ok) return c.html(renderStepErrorHtml(result.message), result.status);
+
+    return c.redirect(`/setup/${sessionId}`, 303);
+  });
+
+  app.post("/setup/:sessionId/actions/:actionId", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const result = await executeSetupActionForSession(sessionId, c.req.param("actionId"));
     if (!result.ok) return c.html(renderStepErrorHtml(result.message), result.status);
 
     return c.redirect(`/setup/${sessionId}`, 303);
@@ -1415,7 +1516,7 @@ type ArchConfigExportResult =
     }
   | {
       ok: false;
-      status: 409;
+      status: 404 | 409;
       error: string;
       message: string;
     };

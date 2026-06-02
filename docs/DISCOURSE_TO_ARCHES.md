@@ -320,9 +320,11 @@ remains blocked until Farcaster publishing has been verified.
 
 The schema now carries Discourse-like step metadata as well: `index`,
 `displayIndex`, `previousStepId`, `nextStepId`, status, icon name, fields,
-choices, choice extra labels, and active step actions. That mirrors the useful
-part of Discourse's wizard serializers while keeping Arches' Farcaster-first
-setup contract.
+choices, choice extra labels, and active step actions. Active actions execute
+through a generic broker controller that first checks the current step's schema
+before dispatching to Arches-specific provider code. That mirrors the useful
+part of Discourse's wizard serializers and controller boundary while keeping
+Arches' Farcaster-first setup contract.
 It also carries a server-derived setup summary with readiness, progress count,
 blocked step count, current step title, and next action so terminal and browser
 renderers share the same operator status model.
@@ -402,8 +404,9 @@ Cloudflare routing, and appliance config as the underlying infra.
    `packages/setup-schema` and `apps/setup-broker`).
 12. Add server-derived setup summary/readiness for terminal and browser
    renderers (started in `packages/setup-schema` and `apps/setup-broker`).
-13. Move provider-backed wizard actions into the setup schema (started in
-   `packages/setup-schema` and rendered by `apps/setup-broker`).
+13. Move provider-backed wizard actions into the setup schema and generic
+   action controller (started in `packages/setup-schema` and
+   `apps/setup-broker`).
 14. Teach `scripts/install.sh` to call the broker when no flags are passed
    (started with the terminal session handoff).
 15. Add unclaimed-subdomain page and wildcard routing (started in

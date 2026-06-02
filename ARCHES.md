@@ -284,6 +284,7 @@ Implemented scaffolding in this repo:
 - generic current-step setup updater for schema-backed fields
 - Discourse-style setup step metadata, browser progress, step actions, and
   field-error rendering
+- generic setup action controller gated by the current active schema step
 - Farcaster verification provider boundary with per-session nonce/domain
   challenge
 - optional official Farcaster auth-client SIWF verifier
