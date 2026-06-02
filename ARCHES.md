@@ -297,6 +297,7 @@ Implemented scaffolding in this repo:
 - server-defined surface, grammar, and theme presets for Arch setup
 - unclaimed hostname setup invitation scaffold
 - optional Neynar channel eligibility adapter
+- browser channel refresh action for verified host FID eligibility
 - in-memory eligible-channel slug reservation scaffold
 
 Not implemented yet:

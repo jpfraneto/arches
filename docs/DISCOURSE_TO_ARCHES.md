@@ -305,6 +305,14 @@ The browser wizard now exposes those same request/status actions on the
 `Prepare Signer` step, so the operator can continue setup from the Discourse-like
 UI while still using the broker provider boundary underneath.
 
+The browser wizard also exposes channel lookup as a provider-backed
+`Choose Community` action. `Refresh eligible channels` calls the same
+host-FID-gated channel eligibility provider as the API endpoint, records
+`channels_refreshed`, and re-renders the eligible Farcaster channels with role
+badges. This follows the Discourse lesson that the wizard should make setup
+state visible, while preserving the Arches rule that channel ownership is
+derived from Farcaster state and never typed in as a claim.
+
 `packages/setup-schema` now contains the first concrete version of this shape:
 renderer-neutral setup steps, fields, choices, completion state, submission
 validation, a terminal renderer, and the product invariant that composer unlock
@@ -372,8 +380,8 @@ config as the underlying infra.
    auth-client SIWF verifier, relay-channel creation, and status polling started
    in `apps/setup-broker`; inline QR rendering and browser auto-polling
    scaffold started; production recovery and mobile handoff UX still needed).
-5. Add Neynar channel lookup for eligible channels (adapter started in
-   `apps/setup-broker`).
+5. Add Neynar channel lookup for eligible channels (adapter and browser refresh
+   action started in `apps/setup-broker`).
 6. Add slug reservation for `*.arches.lat` (started with in-memory reservation
    in `apps/setup-broker`).
 7. Move Cloudflare Tunnel provisioning behind the broker (provider boundary and

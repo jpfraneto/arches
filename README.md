@@ -119,7 +119,11 @@ bun run src/index.ts
 ```
 
 The adapter only loads channels after a setup session has a host FID. The real
-host FID still needs to come from Farcaster verification.
+host FID still needs to come from Farcaster verification. The browser setup page
+exposes this as a `Choose Community` action: `Refresh eligible channels` calls
+the provider, records a channel-refresh audit event, and re-renders the
+server-derived choices. It does not accept manual admin or channel ownership
+claims.
 
 The setup broker also has an in-memory `*.arches.lat` reservation primitive. It
 only reserves the selected eligible Farcaster channel slug; arbitrary custom

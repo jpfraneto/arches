@@ -227,6 +227,12 @@ Without a host FID, the endpoint returns `409`. The host FID must come from
 Farcaster verification in the real flow; local tests can use the dev-state route
 only when `ARCHES_SETUP_BROKER_DEV=1`.
 
+The browser setup wizard exposes the same provider-backed action on the active
+`Choose Community` step. `Refresh eligible channels` reloads the host FID's
+eligible Farcaster channels, records `channels_refreshed`, and redirects back to
+the setup page. The browser does not render a manual admin FID field or accept a
+manual channel ownership claim.
+
 Enable the Neynar provider with:
 
 ```bash

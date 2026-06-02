@@ -105,7 +105,7 @@ type StepCompletionEvent = {
   event: SetupAuditEvent;
 };
 
-type SignerActionResult =
+type SetupActionResult =
   | {
       ok: true;
       record: SessionRecord;
@@ -116,6 +116,9 @@ type SignerActionResult =
       error: string;
       message: string;
     };
+
+type SignerActionResult = SetupActionResult;
+type ChannelRefreshResult = SetupActionResult;
 
 const sessions = new Map<string, SessionRecord>();
 const slugReservations = new Map<string, string>();
@@ -459,32 +462,38 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     }
   }
 
-  app.post("/api/setup/sessions/:sessionId/channels/refresh", async (c) => {
-    const sessionId = c.req.param("sessionId");
+  async function refreshChannelsForSession(
+    sessionId: string,
+  ): Promise<ChannelRefreshResult> {
     const record = sessions.get(sessionId);
-    if (!record) return c.json({ error: "setup session not found" }, 404);
+    if (!record) {
+      return {
+        ok: false,
+        status: 404,
+        error: "setup session not found",
+        message: "Setup session not found.",
+      };
+    }
 
     const hostFid = record.state.hostFid;
     if (!hostFid) {
-      return c.json(
-        {
-          error: "farcaster verification required",
-          message:
-            "Channel eligibility can only be loaded after the setup broker derives a host FID from Farcaster verification.",
-        },
-        409,
-      );
+      return {
+        ok: false,
+        status: 409,
+        error: "farcaster verification required",
+        message:
+          "Channel eligibility can only be loaded after the setup broker derives a host FID from Farcaster verification.",
+      };
     }
 
     const eligibleChannels = await channelEligibilityProvider.listEligibleChannels(hostFid);
-    const updatedState = {
-      ...record.state,
-      eligibleChannels,
-    };
     const updatedRecord = withSetupEvent(
       {
         ...record,
-        state: updatedState,
+        state: {
+          ...record.state,
+          eligibleChannels,
+        },
         updatedAt: new Date().toISOString(),
       },
       "channels_refreshed",
@@ -493,7 +502,15 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
 
     sessions.set(sessionId, updatedRecord);
 
-    return c.json(sessionResponse(updatedRecord, publicOrigin));
+    return { ok: true, record: updatedRecord };
+  }
+
+  app.post("/api/setup/sessions/:sessionId/channels/refresh", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const result = await refreshChannelsForSession(sessionId);
+    if (!result.ok) return c.json({ error: result.error, message: result.message }, result.status);
+
+    return c.json(sessionResponse(result.record, publicOrigin));
   });
 
   app.post("/api/setup/sessions/:sessionId/slug/reserve", async (c) => {
@@ -691,6 +708,14 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
   app.post("/setup/:sessionId/signer/status", async (c) => {
     const sessionId = c.req.param("sessionId");
     const result = await pollSignerStatusForSession(sessionId);
+    if (!result.ok) return c.html(renderStepErrorHtml(result.message), result.status);
+
+    return c.redirect(`/setup/${sessionId}`, 303);
+  });
+
+  app.post("/setup/:sessionId/channels/refresh", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const result = await refreshChannelsForSession(sessionId);
     if (!result.ok) return c.html(renderStepErrorHtml(result.message), result.status);
 
     return c.redirect(`/setup/${sessionId}`, 303);
@@ -2409,6 +2434,12 @@ async function renderCurrentStep(
 }
 
 function renderStepAction(sessionId: string, step: SetupStep): string {
+  if (step.id === "choose-community" && step.status === "active") {
+    return `<form class="actions" method="post" action="/setup/${escapeHtml(sessionId)}/channels/refresh">
+      <button type="submit">Refresh eligible channels</button>
+    </form>`;
+  }
+
   if (step.id === "prepare-signer" && step.status === "active") {
     const hasSignerRequest = step.fields.some(
       (field) => field.id === "signerRequest" && field.value,

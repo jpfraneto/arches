@@ -893,6 +893,73 @@ describe("setup broker", () => {
     expect(html).toContain('<span class="choice-badge">lead</span>');
   });
 
+  test("renders browser channel refresh action on choose community step", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({ hostFid: 18350, signerApproved: true }),
+      headers: { "content-type": "application/json" },
+    });
+    const response = await app.request(`/setup/${created.session.sessionId}`);
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(html).toContain("Choose Community");
+    expect(html).toContain(
+      `action="/setup/${created.session.sessionId}/channels/refresh"`,
+    );
+    expect(html).toContain("<button type=\"submit\">Refresh eligible channels</button>");
+    expect(html).not.toContain('name="adminFid"');
+  });
+
+  test("refreshes eligible channels from the browser wizard", async () => {
+    const app = createSetupBrokerApp({
+      allowDevStateUpdates: true,
+      channelEligibilityProvider: {
+        async listEligibleChannels(fid) {
+          expect(fid).toBe(18350);
+          return [{ slug: "anky", role: "lead", name: "Anky" }];
+        },
+      },
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({ hostFid: 18350, signerApproved: true }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await app.request(
+      `/setup/${created.session.sessionId}/channels/refresh`,
+      { method: "POST", redirect: "manual" },
+    );
+    const sessionResponse = await app.request(`/api/setup/sessions/${created.session.sessionId}`);
+    const body = await sessionResponse.json();
+    const pageResponse = await app.request(`/setup/${created.session.sessionId}`);
+    const html = await pageResponse.text();
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(`/setup/${created.session.sessionId}`);
+    expect(body.session.currentStepId).toBe("choose-community");
+    expect(body.events.at(-1).type).toBe("channels_refreshed");
+    expect(body.events.at(-1).actorFid).toBe(18350);
+    expect(body.session.steps[2].fields[0].choices).toEqual([
+      {
+        id: "anky",
+        label: "/anky",
+        extraLabel: "lead",
+        description: "Anky (lead)",
+        data: { role: "lead" },
+      },
+    ]);
+    expect(pageResponse.status).toBe(200);
+    expect(html).toContain("/anky");
+    expect(html).toContain('<span class="choice-badge">lead</span>');
+  });
+
   test("renders active schema fields as browser forms", async () => {
     const app = createSetupBrokerApp({ allowDevStateUpdates: true });
     const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
