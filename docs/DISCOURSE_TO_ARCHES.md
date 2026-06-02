@@ -286,8 +286,9 @@ It creates setup sessions, serves schema JSON, serves terminal output, serves a
 focused browser setup page at `/setup`, renders unclaimed `*.arches.lat`
 hostnames as setup invitations, includes an optional Neynar channel eligibility
 adapter, includes a generic current-step updater for schema-backed browser/API
-submissions, and intentionally returns `501` for Farcaster verification instead
-of accepting a manual admin FID.
+submissions, includes the first Cloudflare Tunnel provisioning provider boundary,
+and intentionally returns `501` for Farcaster verification instead of accepting a
+manual admin FID.
 
 `packages/setup-schema` now contains the first concrete version of this shape:
 renderer-neutral setup steps, fields, choices, completion state, submission
@@ -307,7 +308,8 @@ remains blocked until Farcaster publishing has been verified.
    `apps/setup-broker`).
 6. Add slug reservation for `*.arches.lat` (started with in-memory reservation
    in `apps/setup-broker`).
-7. Move Cloudflare Tunnel provisioning behind the broker.
+7. Move Cloudflare Tunnel provisioning behind the broker (provider boundary and
+   session endpoint started in `apps/setup-broker`).
 8. Teach `scripts/install.sh` to call the broker when no flags are passed
    (started with the terminal session handoff).
 9. Add unclaimed-subdomain page and wildcard routing (started in

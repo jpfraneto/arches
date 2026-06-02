@@ -168,3 +168,29 @@ The broker should not own the Arch identity. The appliance host owns the local
 process and the signer that publishes to Farcaster. The installer should
 eventually call this broker when it receives no arguments. Until that exists,
 `tunnel-local` is explicit and requires a tunnel token.
+
+## Broker Provisioning Scaffold
+
+`apps/setup-broker` now has the first Cloudflare Tunnel provider boundary. It
+mirrors the shell script above but runs behind the setup session API:
+
+```bash
+ARCHES_TUNNEL_PROVIDER=cloudflare \
+CLOUDFLARE_ACCOUNT_ID=... \
+CLOUDFLARE_ZONE_ID=... \
+CLOUDFLARE_API_TOKEN=... \
+bun run src/index.ts
+```
+
+Then, after the session has a verified host FID, selected eligible channel,
+reserved `*.arches.lat` hostname, `tunnel-local` hosting mode, and configured
+surface defaults:
+
+```bash
+curl -fsSL -X POST \
+  http://localhost:3020/api/setup/sessions/SESSION_ID/tunnel/provision
+```
+
+The broker stores the generated install command and tunnel route status in the
+setup session. It does not mark the appliance as launched and does not unlock
+posting.

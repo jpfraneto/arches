@@ -61,6 +61,8 @@ export type SetupState = {
   surfaceTitle?: string;
   provenanceLabel?: string;
   surfaceConfigured?: boolean;
+  tunnelId?: string;
+  tunnelProvisioned?: boolean;
   applianceLaunched?: boolean;
   installCommand?: string;
   publishingVerified?: boolean;
@@ -356,6 +358,15 @@ function launchApplianceStep(state: SetupState): SetupStep {
     description: "Render the appliance config, tunnel token, and Docker services.",
     status: statusAfter(Boolean(state.surfaceConfigured), Boolean(state.applianceLaunched)),
     fields: [
+      {
+        id: "tunnel",
+        type: "status",
+        label: "Tunnel route",
+        value: state.tunnelProvisioned ? "provisioned" : "waiting",
+        description: state.tunnelId
+          ? `Cloudflare Tunnel ${state.tunnelId} is ready for this Arch hostname.`
+          : "The setup broker will provision the route before the installer starts Docker.",
+      },
       {
         id: "installCommand",
         type: "copy",

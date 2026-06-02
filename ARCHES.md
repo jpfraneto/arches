@@ -281,6 +281,7 @@ Implemented scaffolding in this repo:
 - setup broker scaffold in `apps/setup-broker`
 - terminal and browser setup rendering
 - generic current-step setup updater for schema-backed fields
+- Cloudflare Tunnel provider boundary and setup-session provisioning endpoint
 - unclaimed hostname setup invitation scaffold
 - optional Neynar channel eligibility adapter
 - in-memory eligible-channel slug reservation scaffold
@@ -289,7 +290,7 @@ Not implemented yet:
 
 - production Farcaster QR verification
 - signer request and signer storage flow
-- production Cloudflare Tunnel provisioning behind the broker
+- production-authenticated Cloudflare Tunnel provisioning behind the broker
 - persistent setup sessions and reservations
 - production channel-selection terminal UI
 - Hypersnap Lite publishing contract

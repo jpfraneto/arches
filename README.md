@@ -111,6 +111,20 @@ The setup broker also has an in-memory `*.arches.lat` reservation primitive. It
 only reserves the selected eligible Farcaster channel slug; arbitrary custom
 slugs are intentionally not accepted yet.
 
+The setup broker has a Cloudflare Tunnel provisioning provider scaffold:
+
+```bash
+ARCHES_TUNNEL_PROVIDER=cloudflare \
+CLOUDFLARE_ACCOUNT_ID=... \
+CLOUDFLARE_ZONE_ID=... \
+CLOUDFLARE_API_TOKEN=... \
+bun run src/index.ts
+```
+
+`POST /api/setup/sessions/:sessionId/tunnel/provision` is gated on verified
+setup state and stores the generated `tunnel-local` install command. It does not
+mark the appliance as launched or unlock posting.
+
 Arches is the seed, not the host identity. Each Arch is held up by the person or
 community running that appliance. Any app/factory Farcaster credential used by
 Arches may only request signer approval during setup; it must not become the FID

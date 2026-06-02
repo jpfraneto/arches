@@ -16,7 +16,8 @@ The schema enforces the Arches setup order:
 4. Reserve the Arch hostname.
 5. Choose hosting.
 6. Configure the surface.
-7. Launch the appliance.
+7. Launch the appliance, including tunnel route status and the explicit install
+   command when the broker has provisioned one.
 8. Verify publishing.
 9. Unlock the Arch.
 

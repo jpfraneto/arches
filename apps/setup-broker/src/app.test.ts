@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { createSetupBrokerApp, resetSetupBrokerSessionsForTests } from "./app";
+import { TunnelProvisioningError } from "./tunnel-provisioning";
 
 describe("setup broker", () => {
   beforeEach(() => {
@@ -503,6 +504,126 @@ describe("setup broker", () => {
     expect(body.session.currentStepId).toBe("name-surface");
   });
 
+  test("requires a ready tunnel-local setup session before provisioning tunnel", async () => {
+    const app = createSetupBrokerApp();
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/tunnel/provision`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.message).toContain("derives a host FID");
+  });
+
+  test("fails closed when tunnel provisioning provider is not configured", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify(readyTunnelProvisioningState()),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/tunnel/provision`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(501);
+    expect(body.message).toContain("Tunnel provisioning is not configured");
+  });
+
+  test("provisions a tunnel and stores the installer command without launching appliance", async () => {
+    const calls: Array<{ slug: string; domain: string; adminFid: number; supportEmail?: string }> =
+      [];
+    const app = createSetupBrokerApp({
+      allowDevStateUpdates: true,
+      tunnelProvisioningProvider: {
+        async provisionArchTunnel(request) {
+          calls.push(request);
+          return {
+            tunnelId: "tunnel_123",
+            domain: request.domain,
+            installCommand:
+              "curl -fsSL https://install.arches.lat | bash -s -- \\\n" +
+              "  --arch anky \\\n" +
+              "  --mode tunnel-local \\\n" +
+              "  --domain anky.arches.lat \\\n" +
+              "  --admin-fid 18350 \\\n" +
+              "  --email support@arches.lat \\\n" +
+              "  --tunnel-token 'fake-token'",
+          };
+        },
+      },
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify(readyTunnelProvisioningState()),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/tunnel/provision`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(calls).toEqual([
+      {
+        slug: "anky",
+        domain: "anky.arches.lat",
+        adminFid: 18350,
+        supportEmail: "support@arches.lat",
+      },
+    ]);
+    expect(body.session.currentStepId).toBe("launch-appliance");
+    expect(body.session.steps[6].fields[0].value).toBe("provisioned");
+    expect(body.session.steps[6].fields[1].value).toContain("--tunnel-token 'fake-token'");
+    expect(body.terminal).toContain("Tunnel route: provisioned");
+    expect(body.terminal).toContain("--mode tunnel-local");
+  });
+
+  test("surfaces tunnel provider errors without mutating session progress", async () => {
+    const app = createSetupBrokerApp({
+      allowDevStateUpdates: true,
+      tunnelProvisioningProvider: {
+        async provisionArchTunnel() {
+          throw new TunnelProvisioningError("Cloudflare refused the request.", 502);
+        },
+      },
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify(readyTunnelProvisioningState()),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/tunnel/provision`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+    const sessionResponse = await app.request(`/api/setup/sessions/${created.session.sessionId}`);
+    const sessionBody = await sessionResponse.json();
+
+    expect(response.status).toBe(502);
+    expect(body.message).toBe("Cloudflare refused the request.");
+    expect(sessionBody.session.currentStepId).toBe("launch-appliance");
+    expect(sessionBody.session.steps[6].fields[0].value).toBe("waiting");
+    expect(sessionBody.session.steps[6].fields[1].value).toBeUndefined();
+  });
+
   test("keeps dev state mutation disabled by default", async () => {
     const app = createSetupBrokerApp();
     const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
@@ -537,3 +658,18 @@ describe("setup broker", () => {
     expect(body.terminal).toContain("1. [ ] /anky - lead");
   });
 });
+
+function readyTunnelProvisioningState() {
+  return {
+    hostFid: 18350,
+    signerApproved: true,
+    eligibleChannels: [{ slug: "anky", role: "lead" }],
+    selectedChannelSlug: "anky",
+    reservedSlug: "anky",
+    domain: "anky.arches.lat",
+    hostingMode: "tunnel-local",
+    surfaceTitle: "/anky",
+    provenanceLabel: "posted via anky",
+    surfaceConfigured: true,
+  };
+}

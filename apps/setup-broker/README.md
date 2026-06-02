@@ -95,6 +95,42 @@ The adapter reads Neynar's current channel list endpoint,
 `GET https://api.neynar.com/v2/farcaster/channel/list/`, and maps channels where
 the host FID is `lead.fid` or appears in `moderator_fids`.
 
+## Tunnel Provisioning
+
+The broker has a Cloudflare Tunnel provisioning provider scaffold. By default it
+uses a no-op provider and fails closed:
+
+```bash
+curl -fsSL -X POST http://localhost:3020/api/setup/sessions/SESSION_ID/tunnel/provision
+```
+
+Provisioning is gated on the session already having:
+
+- a host FID from Farcaster verification
+- a selected eligible channel
+- a reserved default `*.arches.lat` hostname
+- `tunnel-local` hosting mode
+- first surface configuration
+
+Enable the Cloudflare provider with:
+
+```bash
+ARCHES_TUNNEL_PROVIDER=cloudflare \
+CLOUDFLARE_ACCOUNT_ID=... \
+CLOUDFLARE_ZONE_ID=... \
+CLOUDFLARE_API_TOKEN=... \
+bun run src/index.ts
+```
+
+The provider mirrors `scripts/provision-cloudflare-tunnel.sh`: it creates a
+remotely managed Cloudflare Tunnel, configures ingress for the API and web
+services, creates or updates the proxied CNAME, fetches the tunnel token, and
+stores the explicit `tunnel-local` install command on the setup session.
+
+This endpoint does not mark the appliance as launched. It only prepares the
+route and command the installer needs. Posting still stays disabled until a real
+Hypersnap Lite/Farcaster publish probe passes.
+
 ## Slug Reservation
 
 The broker has an in-memory reservation primitive for `*.arches.lat` hostnames:

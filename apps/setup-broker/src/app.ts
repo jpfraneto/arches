@@ -5,6 +5,11 @@ import {
   type ChannelEligibilityProvider,
 } from "./channel-eligibility";
 import {
+  TunnelProvisioningError,
+  createTunnelProvisioningProvider,
+  type TunnelProvisioningProvider,
+} from "./tunnel-provisioning";
+import {
   buildSetupSession,
   findStep,
   renderTerminalSession,
@@ -27,6 +32,7 @@ type SessionRecord = {
 type BrokerOptions = {
   allowDevStateUpdates?: boolean;
   channelEligibilityProvider?: ChannelEligibilityProvider;
+  tunnelProvisioningProvider?: TunnelProvisioningProvider;
   publicOrigin?: string;
 };
 
@@ -50,6 +56,8 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
   const allowDevStateUpdates = options.allowDevStateUpdates ?? false;
   const channelEligibilityProvider =
     options.channelEligibilityProvider ?? createChannelEligibilityProvider({});
+  const tunnelProvisioningProvider =
+    options.tunnelProvisioningProvider ?? createTunnelProvisioningProvider({});
 
   app.use(
     "*",
@@ -208,6 +216,61 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     });
 
     return c.json(sessionResponse(result.state, publicOrigin));
+  });
+
+  app.post("/api/setup/sessions/:sessionId/tunnel/provision", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const record = sessions.get(sessionId);
+    if (!record) return c.json({ error: "setup session not found" }, 404);
+
+    const readiness = tunnelProvisioningReadiness(record.state);
+    if (!readiness.ok) {
+      return c.json(
+        { error: readiness.error, message: readiness.message },
+        readiness.status,
+      );
+    }
+
+    try {
+      const result = await tunnelProvisioningProvider.provisionArchTunnel({
+        slug: record.state.reservedSlug!,
+        domain: record.state.domain!,
+        adminFid: record.state.hostFid!,
+        supportEmail: "support@arches.lat",
+      });
+      const updatedState = {
+        ...record.state,
+        tunnelId: result.tunnelId,
+        tunnelProvisioned: true,
+        installCommand: result.installCommand,
+        applianceLaunched: undefined,
+        publishingVerified: undefined,
+        composerUnlocked: undefined,
+      };
+
+      sessions.set(sessionId, {
+        ...record,
+        state: updatedState,
+        updatedAt: new Date().toISOString(),
+      });
+
+      return c.json(sessionResponse(updatedState, publicOrigin));
+    } catch (error) {
+      if (error instanceof TunnelProvisioningError) {
+        return c.json(
+          { error: "tunnel provisioning failed", message: error.message },
+          error.status as 400 | 409 | 500 | 501 | 502,
+        );
+      }
+
+      return c.json(
+        {
+          error: "tunnel provisioning failed",
+          message: "Tunnel provisioning failed before installer config could be delivered.",
+        },
+        500,
+      );
+    }
   });
 
   app.post("/setup/:sessionId/steps/:stepId", async (c) => {
@@ -529,6 +592,8 @@ function applyChooseCommunitySubmission(
       surfaceTitle: undefined,
       provenanceLabel: undefined,
       surfaceConfigured: undefined,
+      tunnelId: undefined,
+      tunnelProvisioned: undefined,
       applianceLaunched: undefined,
       installCommand: undefined,
       publishingVerified: undefined,
@@ -586,6 +651,8 @@ function applyNameSurfaceSubmission(state: SetupState, values: FieldValues): Ste
       surfaceTitle: undefined,
       provenanceLabel: undefined,
       surfaceConfigured: undefined,
+      tunnelId: undefined,
+      tunnelProvisioned: undefined,
       applianceLaunched: undefined,
       installCommand: undefined,
       publishingVerified: undefined,
@@ -613,6 +680,8 @@ function applyChooseHostingSubmission(state: SetupState, values: FieldValues): S
       surfaceTitle: undefined,
       provenanceLabel: undefined,
       surfaceConfigured: undefined,
+      tunnelId: undefined,
+      tunnelProvisioned: undefined,
       applianceLaunched: undefined,
       installCommand: undefined,
       publishingVerified: undefined,
@@ -644,6 +713,8 @@ function applyConfigureSurfaceSubmission(
       surfaceTitle,
       provenanceLabel,
       surfaceConfigured: true,
+      tunnelId: undefined,
+      tunnelProvisioned: undefined,
       applianceLaunched: undefined,
       installCommand: undefined,
       publishingVerified: undefined,
@@ -678,6 +749,67 @@ async function parseStepValues(request: Request): Promise<FieldValues> {
   }
 
   return values;
+}
+
+type TunnelProvisioningReadiness =
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      status: 409;
+      error: string;
+      message: string;
+    };
+
+function tunnelProvisioningReadiness(state: SetupState): TunnelProvisioningReadiness {
+  if (!state.hostFid) {
+    return {
+      ok: false,
+      status: 409,
+      error: "farcaster verification required",
+      message:
+        "Tunnel provisioning can only happen after the setup broker derives a host FID from Farcaster verification.",
+    };
+  }
+
+  if (!state.reservedSlug || !state.domain) {
+    return {
+      ok: false,
+      status: 409,
+      error: "arch hostname required",
+      message: "Reserve a verified default arches.lat hostname before provisioning a tunnel.",
+    };
+  }
+
+  if (state.reservedSlug !== state.selectedChannelSlug) {
+    return {
+      ok: false,
+      status: 409,
+      error: "selected channel mismatch",
+      message: "The reserved hostname must match the selected eligible Farcaster channel.",
+    };
+  }
+
+  if (state.hostingMode !== "tunnel-local") {
+    return {
+      ok: false,
+      status: 409,
+      error: "tunnel hosting required",
+      message: "Cloudflare Tunnel provisioning is only available for tunnel-local hosting.",
+    };
+  }
+
+  if (!state.surfaceConfigured) {
+    return {
+      ok: false,
+      status: 409,
+      error: "surface configuration required",
+      message: "Configure the first visible community defaults before provisioning a tunnel.",
+    };
+  }
+
+  return { ok: true };
 }
 
 function renderSetupHtml(session: SetupSession): string {
