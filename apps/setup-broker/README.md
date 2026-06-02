@@ -127,6 +127,9 @@ tunnel token until a safer installer handoff is implemented.
 The configure step follows the Discourse category-setup idea of choosing the
 kind of space first. Arches currently exposes server-defined choices for surface
 type, posting grammar, and theme; those choices are exported as appliance env.
+The browser renderer keeps that distinction visible: surface type renders as
+choice cards, while grammar and theme render as select fields backed by the same
+server schema.
 
 ## Channel Eligibility
 

@@ -519,6 +519,36 @@ describe("setup broker", () => {
     expect(body.session.currentStepId).toBe("name-surface");
   });
 
+  test("renders configure-surface as type cards plus select fields", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({
+        hostFid: 18350,
+        signerApproved: true,
+        eligibleChannels: [{ slug: "anky", role: "lead" }],
+        selectedChannelSlug: "anky",
+        reservedSlug: "anky",
+        domain: "anky.arches.lat",
+        hostingMode: "tunnel-local",
+      }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await app.request(`/setup/${created.session.sessionId}`);
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(html).toContain("step-surface-configure-surface");
+    expect(html).toContain("choice-cards field-surfacePreset");
+    expect(html).toContain('name="surfacePreset" value="village"');
+    expect(html).toContain('<select id="grammarPreset" name="grammarPreset" required>');
+    expect(html).toContain('<select id="themePreset" name="themePreset" required>');
+    expect(html).toContain('<option value="curated-updates">Curated Updates');
+  });
+
   test("submits configurable surface presets through the generic step updater", async () => {
     const app = createSetupBrokerApp({ allowDevStateUpdates: true });
     const createResponse = await app.request("/api/setup/sessions", { method: "POST" });

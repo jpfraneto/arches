@@ -318,6 +318,11 @@ starts with surface presets (`village`, `bulletin`, `library`), grammar presets
 (`open-casts`, `curated-updates`, `knowledge-base`), and theme presets
 (`daylight`, `high-contrast`, `night`).
 
+The browser setup renderer now preserves that UI model: the surface preset is a
+card chooser, while grammar and theme are select fields. This keeps the
+Discourse category-type-card idea while leaving Arches' setup schema, broker,
+Cloudflare routing, and appliance config as the underlying infra.
+
 ## Implementation Phases
 
 1. Define setup session schema and terminal renderer (implemented in

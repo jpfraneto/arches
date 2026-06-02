@@ -1184,7 +1184,8 @@ function renderSetupHtml(session: SetupSession, events: SetupAuditEvent[]): stri
       margin-bottom: 6px;
     }
 
-    input[type="text"] {
+    input[type="text"],
+    select {
       width: 100%;
       border: 1px solid var(--line);
       border-radius: 6px;
@@ -1195,6 +1196,12 @@ function renderSetupHtml(session: SetupSession, events: SetupAuditEvent[]): stri
     }
 
     input[readonly] { color: var(--muted); }
+    select:disabled { color: var(--muted); }
+
+    .field {
+      display: grid;
+      gap: 6px;
+    }
 
     .choice {
       display: grid;
@@ -1206,6 +1213,7 @@ function renderSetupHtml(session: SetupSession, events: SetupAuditEvent[]): stri
       margin-top: 8px;
     }
 
+    .choice input { margin-top: 3px; }
     .choice.selected { border-color: var(--accent); background: var(--accent-soft); }
 
     .choice-title { font-weight: 650; }
@@ -1461,7 +1469,7 @@ function eventDetail(event: SetupAuditEvent): string {
 function renderCurrentStep(sessionId: string, step: SetupStep): string {
   const canSubmit = isSubmittableStep(step);
 
-  return `<div class="surface">
+  return `<div class="surface step-surface-${escapeHtml(step.id)}">
     <h2>${escapeHtml(step.title)}</h2>
     <p class="description">${escapeHtml(step.description)}</p>
     <form method="post" action="/setup/${escapeHtml(sessionId)}/steps/${escapeHtml(step.id)}">
@@ -1476,8 +1484,9 @@ function renderCurrentStep(sessionId: string, step: SetupStep): string {
 function renderField(field: SetupField, editable = false): string {
   switch (field.type) {
     case "radio":
-    case "dropdown":
       return renderChoiceField(field, editable);
+    case "dropdown":
+      return renderSelectField(field, editable);
     case "status":
     case "qr":
       return renderStatusField(field);
@@ -1491,7 +1500,7 @@ function renderField(field: SetupField, editable = false): string {
 function renderChoiceField(field: SetupField, editable: boolean): string {
   const choices = field.choices ?? [];
 
-  return `<div>
+  return `<div class="field choice-cards field-${escapeHtml(field.id)}">
     <label>${escapeHtml(requiredLabel(field))}</label>
     ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ""}
     ${
@@ -1515,8 +1524,36 @@ function renderChoiceField(field: SetupField, editable: boolean): string {
   </div>`;
 }
 
+function renderSelectField(field: SetupField, editable: boolean): string {
+  const choices = field.choices ?? [];
+  const selectedValue = field.value ?? "";
+
+  return `<div class="field select-field field-${escapeHtml(field.id)}">
+    <label for="${escapeHtml(field.id)}">${escapeHtml(requiredLabel(field))}</label>
+    ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ""}
+    ${
+      choices.length > 0
+        ? `<select id="${escapeHtml(field.id)}" name="${escapeHtml(field.id)}"${
+            editable ? "" : " disabled"
+          }${field.required ? " required" : ""}>
+            ${choices
+              .map((choice) => {
+                const selected = choice.id === selectedValue;
+                return `<option value="${escapeHtml(choice.id)}"${selected ? " selected" : ""}${
+                  choice.disabled ? " disabled" : ""
+                }>${escapeHtml(choice.label)}${
+                  choice.description ? ` - ${escapeHtml(choice.description)}` : ""
+                }</option>`;
+              })
+              .join("")}
+          </select>`
+        : `<div class="field-desc">No choices available yet.</div>`
+    }
+  </div>`;
+}
+
 function renderStatusField(field: SetupField): string {
-  return `<div>
+  return `<div class="field status-field field-${escapeHtml(field.id)}">
     <label>${escapeHtml(requiredLabel(field))}</label>
     <span class="status">${escapeHtml(field.value ?? "waiting")}</span>
     ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ""}
@@ -1524,7 +1561,7 @@ function renderStatusField(field: SetupField): string {
 }
 
 function renderCopyField(field: SetupField): string {
-  return `<div>
+  return `<div class="field copy-field field-${escapeHtml(field.id)}">
     <label>${escapeHtml(requiredLabel(field))}</label>
     ${field.value ? `<pre>${escapeHtml(field.value)}</pre>` : `<div class="field-desc">No command available yet.</div>`}
     ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ""}
@@ -1532,7 +1569,7 @@ function renderCopyField(field: SetupField): string {
 }
 
 function renderTextField(field: SetupField, editable: boolean): string {
-  return `<div>
+  return `<div class="field text-field field-${escapeHtml(field.id)}">
     <label for="${escapeHtml(field.id)}">${escapeHtml(requiredLabel(field))}</label>
     <input id="${escapeHtml(field.id)}" name="${escapeHtml(field.id)}" type="text" value="${escapeHtml(
       field.value ?? "",
