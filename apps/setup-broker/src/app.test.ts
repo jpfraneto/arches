@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { createSetupBrokerApp, resetSetupBrokerSessionsForTests } from "./app";
+import {
+  createSetupBrokerApp,
+  resetSetupBrokerSessionsForTests,
+  type SetupSessionRecord,
+} from "./app";
 import { FarcasterVerificationError } from "./farcaster-verification";
+import { createInMemorySetupBrokerStore } from "./setup-store";
 import { TunnelProvisioningError } from "./tunnel-provisioning";
 
 describe("setup broker", () => {
@@ -53,6 +58,30 @@ describe("setup broker", () => {
     expect((await sessionResponse.json()).session.sessionId).toBe(sessionId);
     expect(terminalResponse.status).toBe(200);
     expect(await terminalResponse.text()).toContain("Current step: Verify Farcaster");
+  });
+
+  test("can share setup sessions through an injected store", async () => {
+    const setupStore = createInMemorySetupBrokerStore<SetupSessionRecord>();
+    const firstApp = createSetupBrokerApp({ setupStore });
+    const createResponse = await firstApp.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    const sessionId = created.session.sessionId;
+
+    const secondApp = createSetupBrokerApp({ setupStore });
+    const sharedResponse = await secondApp.request(`/api/setup/sessions/${sessionId}`);
+    const sharedBody = await sharedResponse.json();
+    const healthResponse = await secondApp.request("/health");
+    const healthBody = await healthResponse.json();
+
+    const isolatedApp = createSetupBrokerApp({
+      setupStore: createInMemorySetupBrokerStore<SetupSessionRecord>(),
+    });
+    const isolatedResponse = await isolatedApp.request(`/api/setup/sessions/${sessionId}`);
+
+    expect(sharedResponse.status).toBe(200);
+    expect(sharedBody.session.sessionId).toBe(sessionId);
+    expect(healthBody.sessions).toBe(1);
+    expect(isolatedResponse.status).toBe(404);
   });
 
   test("creates a setup session as terminal text for the installer", async () => {

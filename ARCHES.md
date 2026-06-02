@@ -302,8 +302,8 @@ Implemented scaffolding in this repo:
 - browser channel refresh action for verified host FID eligibility
 - browser tunnel provisioning action for the launch step
 - in-memory eligible-channel slug reservation scaffold
-- in-memory setup store adapter boundary for sessions, reservations, and signer
-  request tokens
+- injectable in-memory setup store adapter boundary for sessions, reservations,
+  and signer request tokens
 
 Not implemented yet:
 

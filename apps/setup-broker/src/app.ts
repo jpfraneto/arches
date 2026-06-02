@@ -28,7 +28,11 @@ import {
   type SignerApprovalProvider,
   type SignerStatus,
 } from "./signer-approval";
-import { createInMemorySetupBrokerStore } from "./setup-store";
+import {
+  createInMemorySetupBrokerStore,
+  type SetupBrokerStore,
+  type SetupStoreMap,
+} from "./setup-store";
 import {
   buildSetupSession,
   findStep,
@@ -48,7 +52,7 @@ import {
   type ThemePreset,
 } from "../../../packages/setup-schema/src/index";
 
-type SessionRecord = {
+export type SetupSessionRecord = {
   state: SetupState;
   events: SetupAuditEvent[];
   createdAt: string;
@@ -84,6 +88,7 @@ type BrokerOptions = {
   tunnelProvisioningProvider?: TunnelProvisioningProvider;
   farcasterVerificationProvider?: FarcasterVerificationProvider;
   signerApprovalProvider?: SignerApprovalProvider;
+  setupStore?: SetupBrokerStore<SetupSessionRecord>;
   publicOrigin?: string;
 };
 
@@ -110,7 +115,7 @@ type StepCompletionEvent = {
 type SetupActionResult =
   | {
       ok: true;
-      record: SessionRecord;
+      record: SetupSessionRecord;
     }
   | {
       ok: false;
@@ -135,14 +140,15 @@ type ActiveActionResult =
       message: string;
     };
 
-const setupStore = createInMemorySetupBrokerStore<SessionRecord>();
-const sessions = setupStore.sessions;
-const slugReservations = setupStore.slugReservations;
-const signerRequestTokens = setupStore.signerRequestTokens;
+const defaultSetupStore = createInMemorySetupBrokerStore<SetupSessionRecord>();
 const RESERVED_ARCHES_SUBDOMAINS = new Set(["install", "setup", "www"]);
 
 export function createSetupBrokerApp(options: BrokerOptions = {}) {
   const app = new Hono();
+  const setupStore = options.setupStore ?? defaultSetupStore;
+  const sessions = setupStore.sessions;
+  const slugReservations = setupStore.slugReservations;
+  const signerRequestTokens = setupStore.signerRequestTokens;
   const publicOrigin = options.publicOrigin ?? "http://localhost:3020";
   const allowDevStateUpdates = options.allowDevStateUpdates ?? false;
   const channelEligibilityProvider =
@@ -180,6 +186,7 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
   app.post("/api/setup/sessions", async (c) => {
     const requestedSlug = normalizeSlug(c.req.query("requested"));
     const state = await createSetupSession(
+      sessions,
       publicOrigin,
       requestedSlug,
       farcasterVerificationProvider,
@@ -191,6 +198,7 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
 
   app.post("/api/setup/sessions/terminal", async (c) => {
     const state = await createSetupSession(
+      sessions,
       publicOrigin,
       undefined,
       farcasterVerificationProvider,
@@ -204,6 +212,7 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
   app.get("/setup", async (c) => {
     const requestedSlug = normalizeSlug(c.req.query("requested"));
     const state = await createSetupSession(
+      sessions,
       publicOrigin,
       requestedSlug,
       farcasterVerificationProvider,
@@ -537,7 +546,11 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     const body = await c.req.json().catch(() => ({}));
     if (!isObject(body)) return c.json({ error: "reservation body must be an object" }, 400);
 
-    const result = reserveArchSlug(record.state, normalizeSlug(body.slug));
+    const result = reserveArchSlug(
+      record.state,
+      normalizeSlug(body.slug),
+      slugReservations,
+    );
     if (!result.ok) return c.json({ error: result.error, message: result.message }, result.status);
 
     const updatedState = {
@@ -573,6 +586,7 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
       record.state,
       c.req.param("stepId") as SetupStepId,
       values,
+      slugReservations,
     );
     if (!result.ok) return c.json({ error: result.error, message: result.message }, result.status);
 
@@ -857,6 +871,7 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
       record.state,
       c.req.param("stepId") as SetupStepId,
       values,
+      slugReservations,
     );
     if (!result.ok) {
       if (result.validationErrors?.length) {
@@ -924,10 +939,11 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
 }
 
 export function resetSetupBrokerSessionsForTests() {
-  setupStore.clear();
+  defaultSetupStore.clear();
 }
 
 async function createSetupSession(
+  sessions: SetupStoreMap<SetupSessionRecord>,
   publicOrigin: string,
   requestedSlug: string | undefined,
   farcasterVerificationProvider: FarcasterVerificationProvider,
@@ -983,7 +999,7 @@ async function createSetupSession(
   return state;
 }
 
-function sessionResponse(record: SessionRecord, publicOrigin: string): SessionResponse {
+function sessionResponse(record: SetupSessionRecord, publicOrigin: string): SessionResponse {
   const state = record.state;
   const session = setupSessionWithProvenance(record);
   const verificationUrl = `${publicOrigin}/api/setup/sessions/${state.sessionId}/farcaster/verify`;
@@ -1006,7 +1022,7 @@ function sessionResponse(record: SessionRecord, publicOrigin: string): SessionRe
   };
 }
 
-function setupSessionWithProvenance(record: SessionRecord): SetupSession {
+function setupSessionWithProvenance(record: SetupSessionRecord): SetupSession {
   return annotateStepProvenance(buildSetupSession(record.state), record.events);
 }
 
@@ -1110,10 +1126,10 @@ function createSetupEvent(
 }
 
 function withSetupEvent(
-  record: SessionRecord,
+  record: SetupSessionRecord,
   type: SetupAuditEventType,
   options: Omit<Partial<SetupAuditEvent>, "id" | "sessionId" | "type" | "at"> = {},
-): SessionRecord {
+): SetupSessionRecord {
   return {
     ...record,
     events: [...record.events, createSetupEvent(record.state.sessionId, type, options)],
@@ -1121,10 +1137,10 @@ function withSetupEvent(
 }
 
 function withStepSideEffectEvents(
-  record: SessionRecord,
+  record: SetupSessionRecord,
   previousState: SetupState,
   stepId: string,
-): SessionRecord {
+): SetupSessionRecord {
   if (
     stepId === "name-surface" &&
     record.state.reservedSlug &&
@@ -1141,11 +1157,11 @@ function withStepSideEffectEvents(
 }
 
 async function applyFarcasterChannelStatus(
-  record: SessionRecord,
+  record: SetupSessionRecord,
   status: FarcasterSignInChannelStatus,
   farcasterVerificationProvider: FarcasterVerificationProvider,
   publicOrigin: string,
-): Promise<SessionRecord> {
+): Promise<SetupSessionRecord> {
   if (status.nonce !== record.state.farcasterNonce) {
     throw new FarcasterVerificationError(
       "Farcaster auth channel nonce does not match this setup session.",
@@ -1201,7 +1217,7 @@ async function applyFarcasterChannelStatus(
   );
 }
 
-function applySignerStatus(record: SessionRecord, status: SignerStatus): SessionRecord {
+function applySignerStatus(record: SetupSessionRecord, status: SignerStatus): SetupSessionRecord {
   if (status.state === "pending") {
     return {
       ...record,
@@ -1415,7 +1431,11 @@ type ReservationResult =
       message: string;
     };
 
-function reserveArchSlug(state: SetupState, requestedSlug?: string): ReservationResult {
+function reserveArchSlug(
+  state: SetupState,
+  requestedSlug: string | undefined,
+  slugReservations: SetupStoreMap<string>,
+): ReservationResult {
   if (!state.hostFid) {
     return {
       ok: false,
@@ -1510,7 +1530,7 @@ type StepSubmissionResult =
 type ArchConfigExportResult =
   | {
       ok: true;
-      record: SessionRecord;
+      record: SetupSessionRecord;
       config: ArchConfigSnapshot;
       env: string;
     }
@@ -1521,7 +1541,7 @@ type ArchConfigExportResult =
       message: string;
     };
 
-function exportArchConfig(record: SessionRecord): ArchConfigExportResult {
+function exportArchConfig(record: SetupSessionRecord): ArchConfigExportResult {
   const result = buildArchConfigSnapshot(record.state);
   if (!result.ok) return result;
 
@@ -1561,6 +1581,7 @@ function applySetupStepSubmission(
   state: SetupState,
   stepId: SetupStepId,
   values: FieldValues,
+  slugReservations: SetupStoreMap<string>,
 ): StepSubmissionResult {
   const session = buildSetupSession(state);
   const step = findStep(session, stepId);
@@ -1616,7 +1637,7 @@ function applySetupStepSubmission(
     case "choose-community":
       return applyChooseCommunitySubmission(state, values);
     case "name-surface":
-      return applyNameSurfaceSubmission(state, values);
+      return applyNameSurfaceSubmission(state, values, slugReservations);
     case "choose-hosting":
       return applyChooseHostingSubmission(state, values);
     case "configure-surface":
@@ -1691,7 +1712,11 @@ function applyChooseCommunitySubmission(
   };
 }
 
-function applyNameSurfaceSubmission(state: SetupState, values: FieldValues): StepSubmissionResult {
+function applyNameSurfaceSubmission(
+  state: SetupState,
+  values: FieldValues,
+  slugReservations: SetupStoreMap<string>,
+): StepSubmissionResult {
   const requestedSlug = normalizeSlug(values.slug);
   const rawDomain = values.domain?.trim();
   const requestedDomain = normalizeDomain(rawDomain);
@@ -1716,7 +1741,7 @@ function applyNameSurfaceSubmission(state: SetupState, values: FieldValues): Ste
     };
   }
 
-  const result = reserveArchSlug(state, requestedSlug);
+  const result = reserveArchSlug(state, requestedSlug, slugReservations);
   if (!result.ok) return result;
 
   const domain = `${result.slug}.arches.lat`;
