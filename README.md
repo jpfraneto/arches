@@ -75,6 +75,11 @@ Farcaster signature, reserve a default `*.arches.lat` hostname, provision a
 Cloudflare Tunnel, and start the local appliance. No admin verification should
 be faked.
 
+Arches is the seed, not the host identity. Each Arch is held up by the person or
+community running that appliance. Any app/factory Farcaster credential used by
+Arches may only request signer approval during setup; it must not become the FID
+that casts for every Arch.
+
 The low-level one-liner remains available for explicit installs:
 
 ```bash

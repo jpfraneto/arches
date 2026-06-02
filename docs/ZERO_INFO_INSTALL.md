@@ -9,20 +9,57 @@ curl -fsSL https://install.arches.lat | bash
 The user should not have to know their FID, pick a deployment mode, configure
 DNS, create a Cloudflare account, or open ports.
 
+Arches is the seed, not the host. Running the command should spawn an appliance
+held by the verified Farcaster user who approved it. Arches may broker setup,
+but each Arch should have its own host FID, local signer, hostname, and
+community context.
+
 ## Target Flow
 
 1. The installer creates a local install session.
 2. The terminal shows a Farcaster sign-in URL and QR code.
 3. The user scans the QR code in a Farcaster client.
-4. The Arches control plane verifies the Farcaster signature.
-5. The control plane derives the admin FID from the verified Farcaster account.
-6. The control plane reserves a slug and domain such as `anky.arches.lat`.
-7. The control plane provisions a Cloudflare Tunnel and DNS route.
-8. The installer receives the verified config and tunnel token.
-9. Docker Compose starts the local appliance plus `cloudflared`.
+4. A setup broker verifies the Farcaster signature.
+5. The broker derives the host FID from the verified Farcaster account.
+6. The broker lists Farcaster channels this FID can host.
+7. The terminal asks the user which channel/community to launch.
+8. The broker reserves a slug and domain such as `anky.arches.lat`.
+9. The broker provisions a Cloudflare Tunnel and DNS route.
+10. The installer receives the verified config and tunnel token.
+11. Docker Compose starts the local appliance plus `cloudflared`.
 
 No admin identity should be accepted unless it comes from a verified Farcaster
 signature. Do not fake admin verification.
+
+The app/factory FID, if used, is only a bootstrap identity for creating signer
+requests. It is not the universal posting identity for Arches. User/community
+casts must be signed by a signer approved by the verified host FID and stored
+with the appliance that host runs.
+
+## Channel Selection
+
+After signer approval, the setup broker can query channel metadata for the
+verified host FID and show eligible communities in the terminal:
+
+```text
+Farcaster verified: FID 18350
+
+You can host an Arch for:
+
+[1] /anky      lead
+[2] /example   moderator
+
+Choose a channel:
+```
+
+Eligibility should come from Farcaster channel state, with Neynar used as a
+convenience API for channel metadata. Arches must not claim channel ownership;
+it should only recognize that the verified FID is already allowed to lead or
+moderate that Farcaster channel.
+
+If someone visits an unclaimed `*.arches.lat` hostname, the router should serve
+a creation page for that subdomain. It should invite a verified Farcaster user
+to scan, prove they can host that community, and launch the appliance.
 
 ## Current Shippable Primitive
 
@@ -56,7 +93,7 @@ configuration, or VPS.
 
 ## Cloudflare Provisioning
 
-Operators or a future control plane can provision the tunnel with:
+Operators or a future setup broker can provision the tunnel with:
 
 ```bash
 CLOUDFLARE_ACCOUNT_ID=... \
@@ -81,14 +118,15 @@ The script:
 5. Prints the install command for the local appliance.
 
 This script does not verify Farcaster identity. It is a low-level provisioning
-primitive that should only be called after identity verification has happened.
+primitive that should only be called after identity and channel eligibility have
+been verified.
 
 ## Cloudflare DNS Shape
 
 Once `arches.lat` uses Cloudflare nameservers:
 
 ```text
-arches.lat          -> landing/control surface
+arches.lat          -> landing/setup surface
 install.arches.lat  -> installer endpoint
 *.arches.lat        -> Arch appliances via Cloudflare Tunnel
 ```
@@ -113,17 +151,20 @@ This mode should be described honestly:
 - The tunnel model makes local hosting simple; it does not make a sleeping
   machine reliable.
 
-## Control Plane Contract
+## Setup Broker Contract
 
-The missing production component is the Arches control plane. It should own:
+The missing production component is a setup broker. It should coordinate:
 
 - install sessions
-- Farcaster QR/signature verification
+- Farcaster QR/signature verification for the host FID
+- local signer-key approval
+- Farcaster channel eligibility lookup
 - slug reservation
 - tunnel provisioning
 - tunnel token delivery to the installer
 - tunnel revocation and recovery
 
-The installer should eventually call the control plane when it receives no
-arguments. Until that exists, `tunnel-local` is explicit and requires a tunnel
-token.
+The broker should not own the Arch identity. The appliance host owns the local
+process and the signer that publishes to Farcaster. The installer should
+eventually call this broker when it receives no arguments. Until that exists,
+`tunnel-local` is explicit and requires a tunnel token.
