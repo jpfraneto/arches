@@ -6,11 +6,16 @@ import {
 } from "./channel-eligibility";
 import {
   buildSetupSession,
+  findStep,
   renderTerminalSession,
+  validateStepSubmission,
+  type FieldValues,
+  type HostingMode,
   type SetupField,
   type SetupSession,
   type SetupState,
   type SetupStep,
+  type SetupStepId,
 } from "../../../packages/setup-schema/src/index";
 
 type SessionRecord = {
@@ -183,6 +188,50 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
     return c.json(sessionResponse(updatedState, publicOrigin));
   });
 
+  app.post("/api/setup/sessions/:sessionId/steps/:stepId", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const record = sessions.get(sessionId);
+    if (!record) return c.json({ error: "setup session not found" }, 404);
+
+    const values = await parseStepValues(c.req.raw);
+    const result = applySetupStepSubmission(
+      record.state,
+      c.req.param("stepId") as SetupStepId,
+      values,
+    );
+    if (!result.ok) return c.json({ error: result.error, message: result.message }, result.status);
+
+    sessions.set(sessionId, {
+      ...record,
+      state: result.state,
+      updatedAt: new Date().toISOString(),
+    });
+
+    return c.json(sessionResponse(result.state, publicOrigin));
+  });
+
+  app.post("/setup/:sessionId/steps/:stepId", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const record = sessions.get(sessionId);
+    if (!record) return c.html(renderMissingSessionHtml(), 404);
+
+    const values = await parseStepValues(c.req.raw);
+    const result = applySetupStepSubmission(
+      record.state,
+      c.req.param("stepId") as SetupStepId,
+      values,
+    );
+    if (!result.ok) return c.html(renderStepErrorHtml(result.message), result.status);
+
+    sessions.set(sessionId, {
+      ...record,
+      state: result.state,
+      updatedAt: new Date().toISOString(),
+    });
+
+    return c.redirect(`/setup/${sessionId}`, 303);
+  });
+
   app.put("/api/setup/sessions/:sessionId/dev-state", async (c) => {
     if (!allowDevStateUpdates) {
       return c.json({ error: "dev state updates are disabled" }, 404);
@@ -348,6 +397,287 @@ function reserveArchSlug(state: SetupState, requestedSlug?: string): Reservation
     ok: true,
     slug,
   };
+}
+
+type StepSubmissionResult =
+  | {
+      ok: true;
+      state: SetupState;
+    }
+  | {
+      ok: false;
+      status: 400 | 409 | 501;
+      error: string;
+      message: string;
+    };
+
+function applySetupStepSubmission(
+  state: SetupState,
+  stepId: SetupStepId,
+  values: FieldValues,
+): StepSubmissionResult {
+  const session = buildSetupSession(state);
+  const step = findStep(session, stepId);
+
+  if (!step) {
+    return {
+      ok: false,
+      status: 400,
+      error: "unknown setup step",
+      message: "The requested setup step is not part of the Arches setup schema.",
+    };
+  }
+
+  if (step.id !== session.currentStepId || step.status !== "active") {
+    return {
+      ok: false,
+      status: 409,
+      error: "step is not active",
+      message: "Only the current active setup step can be submitted.",
+    };
+  }
+
+  const validationErrors = validateStepSubmission(step, values);
+  if (validationErrors.length > 0) {
+    return {
+      ok: false,
+      status: 400,
+      error: "invalid setup step submission",
+      message: validationErrors
+        .map((validationError) => `${validationError.fieldId}: ${validationError.message}`)
+        .join(", "),
+    };
+  }
+
+  switch (step.id) {
+    case "verify-farcaster":
+      return {
+        ok: false,
+        status: 501,
+        error: "farcaster verification is not implemented yet",
+        message:
+          "The setup broker must derive the host FID from a verified Farcaster signature before setup can continue.",
+      };
+    case "prepare-signer":
+      return {
+        ok: false,
+        status: 501,
+        error: "signer approval is not implemented yet",
+        message:
+          "The Arch signer must be approved by the verified host FID before setup can continue.",
+      };
+    case "choose-community":
+      return applyChooseCommunitySubmission(state, values);
+    case "name-surface":
+      return applyNameSurfaceSubmission(state, values);
+    case "choose-hosting":
+      return applyChooseHostingSubmission(state, values);
+    case "configure-surface":
+      return applyConfigureSurfaceSubmission(state, values);
+    case "launch-appliance":
+      return {
+        ok: false,
+        status: 501,
+        error: "appliance launch is not implemented yet",
+        message:
+          "Automatic appliance launch requires broker tunnel provisioning and installer config delivery.",
+      };
+    case "verify-publishing":
+      return {
+        ok: false,
+        status: 501,
+        error: "publishing verification is not implemented yet",
+        message:
+          "The composer stays locked until Hypersnap Lite publishing to Farcaster is verified.",
+      };
+    case "unlock-arch":
+      return {
+        ok: false,
+        status: 501,
+        error: "composer unlock is not implemented yet",
+        message: "The composer can only unlock after Farcaster publishing has been verified.",
+      };
+  }
+}
+
+function applyChooseCommunitySubmission(
+  state: SetupState,
+  values: FieldValues,
+): StepSubmissionResult {
+  const selectedChannelSlug = normalizeSlug(values.channel);
+  const selectedChannel = state.eligibleChannels?.find(
+    (channel) => channel.slug === selectedChannelSlug,
+  );
+
+  if (!selectedChannelSlug || !selectedChannel) {
+    return {
+      ok: false,
+      status: 409,
+      error: "selected channel is not eligible",
+      message: "The selected channel must come from verified Farcaster channel eligibility.",
+    };
+  }
+
+  return {
+    ok: true,
+    state: {
+      ...state,
+      selectedChannelSlug,
+      reservedSlug: undefined,
+      domain: undefined,
+      hostingMode: undefined,
+      surfaceTitle: undefined,
+      provenanceLabel: undefined,
+      surfaceConfigured: undefined,
+      applianceLaunched: undefined,
+      installCommand: undefined,
+      publishingVerified: undefined,
+      composerUnlocked: undefined,
+    },
+  };
+}
+
+function applyNameSurfaceSubmission(state: SetupState, values: FieldValues): StepSubmissionResult {
+  const requestedSlug = normalizeSlug(values.slug);
+  const rawDomain = values.domain?.trim();
+  const requestedDomain = normalizeDomain(rawDomain);
+
+  if (rawDomain && !requestedDomain) {
+    return {
+      ok: false,
+      status: 400,
+      error: "invalid domain",
+      message: "The setup broker only accepts default *.arches.lat hostnames in this scaffold.",
+    };
+  }
+
+  const expectedSlug = requestedSlug ?? state.requestedSlug ?? state.selectedChannelSlug;
+  if (requestedDomain && expectedSlug && requestedDomain !== `${expectedSlug}.arches.lat`) {
+    return {
+      ok: false,
+      status: 409,
+      error: "custom domains are not implemented",
+      message:
+        "The setup broker only reserves the selected channel's default arches.lat hostname in this scaffold.",
+    };
+  }
+
+  const result = reserveArchSlug(state, requestedSlug);
+  if (!result.ok) return result;
+
+  const domain = `${result.slug}.arches.lat`;
+  if (requestedDomain && requestedDomain !== domain) {
+    return {
+      ok: false,
+      status: 409,
+      error: "custom domains are not implemented",
+      message:
+        "The setup broker only reserves the selected channel's default arches.lat hostname in this scaffold.",
+    };
+  }
+
+  return {
+    ok: true,
+    state: {
+      ...state,
+      reservedSlug: result.slug,
+      domain,
+      hostingMode: undefined,
+      surfaceTitle: undefined,
+      provenanceLabel: undefined,
+      surfaceConfigured: undefined,
+      applianceLaunched: undefined,
+      installCommand: undefined,
+      publishingVerified: undefined,
+      composerUnlocked: undefined,
+    },
+  };
+}
+
+function applyChooseHostingSubmission(state: SetupState, values: FieldValues): StepSubmissionResult {
+  const mode = values.mode as HostingMode | undefined;
+  if (!mode || !["tunnel-local", "local", "vps"].includes(mode)) {
+    return {
+      ok: false,
+      status: 400,
+      error: "invalid hosting mode",
+      message: "Choose a valid hosting mode from the setup schema.",
+    };
+  }
+
+  return {
+    ok: true,
+    state: {
+      ...state,
+      hostingMode: mode,
+      surfaceTitle: undefined,
+      provenanceLabel: undefined,
+      surfaceConfigured: undefined,
+      applianceLaunched: undefined,
+      installCommand: undefined,
+      publishingVerified: undefined,
+      composerUnlocked: undefined,
+    },
+  };
+}
+
+function applyConfigureSurfaceSubmission(
+  state: SetupState,
+  values: FieldValues,
+): StepSubmissionResult {
+  const surfaceTitle = values.title?.trim();
+  const provenanceLabel = values.provenance?.trim();
+
+  if (!surfaceTitle || !provenanceLabel) {
+    return {
+      ok: false,
+      status: 400,
+      error: "invalid surface configuration",
+      message: "Surface title and provenance label are required.",
+    };
+  }
+
+  return {
+    ok: true,
+    state: {
+      ...state,
+      surfaceTitle,
+      provenanceLabel,
+      surfaceConfigured: true,
+      applianceLaunched: undefined,
+      installCommand: undefined,
+      publishingVerified: undefined,
+      composerUnlocked: undefined,
+    },
+  };
+}
+
+async function parseStepValues(request: Request): Promise<FieldValues> {
+  const contentType = request.headers.get("content-type") ?? "";
+  const values: FieldValues = {};
+
+  if (contentType.includes("application/json")) {
+    const body = await request.json().catch(() => ({}));
+    if (!isObject(body)) return values;
+
+    for (const [key, value] of Object.entries(body)) {
+      values[key] = typeof value === "string" ? value : value === undefined ? undefined : String(value);
+    }
+
+    return values;
+  }
+
+  if (
+    contentType.includes("application/x-www-form-urlencoded") ||
+    contentType.includes("multipart/form-data")
+  ) {
+    const formData = await request.formData();
+    for (const [key, value] of formData.entries()) {
+      values[key] = typeof value === "string" ? value : value.name;
+    }
+  }
+
+  return values;
 }
 
 function renderSetupHtml(session: SetupSession): string {
@@ -527,6 +857,22 @@ function renderSetupHtml(session: SetupSession): string {
       background: #f4f4f1;
     }
 
+    .actions {
+      margin-top: 24px;
+    }
+
+    button {
+      min-height: 38px;
+      border: 0;
+      border-radius: 6px;
+      padding: 0 16px;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+    }
+
     .notice {
       margin-top: 28px;
       padding: 12px 14px;
@@ -560,7 +906,7 @@ function renderSetupHtml(session: SetupSession): string {
       </ol>
     </aside>
     <section>
-      ${currentStep ? renderCurrentStep(currentStep) : ""}
+      ${currentStep ? renderCurrentStep(session.sessionId, currentStep) : ""}
       <div class="notice">Farcaster verification is not wired yet. Posting and composer unlock remain blocked.</div>
     </section>
   </main>
@@ -662,6 +1008,21 @@ function renderMissingSessionHtml(): string {
 </html>`;
 }
 
+function renderStepErrorHtml(message: string): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Setup Step Error</title>
+</head>
+<body>
+  <h1>Setup step error</h1>
+  <p>${escapeHtml(message)}</p>
+</body>
+</html>`;
+}
+
 function renderRequestedSlug(session: SetupSession): string {
   return session.requestedSlug
     ? `<div class="session">Requested Arch: ${escapeHtml(`${session.requestedSlug}.arches.lat`)}</div>`
@@ -675,32 +1036,37 @@ function renderProgressStep(step: SetupStep): string {
   </li>`;
 }
 
-function renderCurrentStep(step: SetupStep): string {
+function renderCurrentStep(sessionId: string, step: SetupStep): string {
+  const canSubmit = isSubmittableStep(step);
+
   return `<div class="surface">
     <h2>${escapeHtml(step.title)}</h2>
     <p class="description">${escapeHtml(step.description)}</p>
-    <div class="fields">
-      ${step.fields.map(renderField).join("")}
-    </div>
+    <form method="post" action="/setup/${escapeHtml(sessionId)}/steps/${escapeHtml(step.id)}">
+      <div class="fields">
+        ${step.fields.map((field) => renderField(field, canSubmit)).join("")}
+      </div>
+      ${canSubmit ? `<div class="actions"><button type="submit">Continue</button></div>` : ""}
+    </form>
   </div>`;
 }
 
-function renderField(field: SetupField): string {
+function renderField(field: SetupField, editable = false): string {
   switch (field.type) {
     case "radio":
     case "dropdown":
-      return renderChoiceField(field);
+      return renderChoiceField(field, editable);
     case "status":
     case "qr":
       return renderStatusField(field);
     case "copy":
       return renderCopyField(field);
     case "text":
-      return renderTextField(field);
+      return renderTextField(field, editable);
   }
 }
 
-function renderChoiceField(field: SetupField): string {
+function renderChoiceField(field: SetupField, editable: boolean): string {
   const choices = field.choices ?? [];
 
   return `<div>
@@ -712,7 +1078,9 @@ function renderChoiceField(field: SetupField): string {
             .map((choice) => {
               const selected = choice.id === field.value;
               return `<div class="choice${selected ? " selected" : ""}">
-                <input type="radio" disabled${selected ? " checked" : ""}>
+                <input type="radio" name="${escapeHtml(field.id)}" value="${escapeHtml(choice.id)}"${
+                  editable && !choice.disabled ? "" : " disabled"
+                }${selected ? " checked" : ""}${field.required ? " required" : ""}>
                 <div>
                   <div class="choice-title">${escapeHtml(choice.label)}</div>
                   ${choice.description ? `<div class="choice-desc">${escapeHtml(choice.description)}</div>` : ""}
@@ -741,14 +1109,23 @@ function renderCopyField(field: SetupField): string {
   </div>`;
 }
 
-function renderTextField(field: SetupField): string {
+function renderTextField(field: SetupField, editable: boolean): string {
   return `<div>
     <label for="${escapeHtml(field.id)}">${escapeHtml(requiredLabel(field))}</label>
-    <input id="${escapeHtml(field.id)}" type="text" value="${escapeHtml(field.value ?? "")}" placeholder="${escapeHtml(
-      field.placeholder ?? "",
-    )}" readonly>
+    <input id="${escapeHtml(field.id)}" name="${escapeHtml(field.id)}" type="text" value="${escapeHtml(
+      field.value ?? "",
+    )}" placeholder="${escapeHtml(field.placeholder ?? "")}"${field.required ? " required" : ""}${
+      editable ? "" : " readonly"
+    }>
     ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ""}
   </div>`;
+}
+
+function isSubmittableStep(step: SetupStep): boolean {
+  if (step.status !== "active") return false;
+  return step.fields.some(
+    (field) => field.type === "text" || field.type === "radio" || field.type === "dropdown",
+  );
 }
 
 function requiredLabel(field: SetupField): string {
@@ -785,6 +1162,16 @@ function normalizeSlug(value: string | undefined): string | undefined {
 
   const slug = value.trim().toLowerCase();
   return /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(slug) ? slug : undefined;
+}
+
+function normalizeDomain(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+
+  const domain = value.trim().toLowerCase();
+  if (!domain.endsWith(".arches.lat")) return undefined;
+
+  const slug = normalizeSlug(domain.slice(0, -".arches.lat".length));
+  return slug ? `${slug}.arches.lat` : undefined;
 }
 
 function escapeHtml(value: string): string {

@@ -280,6 +280,7 @@ Implemented scaffolding in this repo:
 - setup schema package in `packages/setup-schema`
 - setup broker scaffold in `apps/setup-broker`
 - terminal and browser setup rendering
+- generic current-step setup updater for schema-backed fields
 - unclaimed hostname setup invitation scaffold
 - optional Neynar channel eligibility adapter
 - in-memory eligible-channel slug reservation scaffold

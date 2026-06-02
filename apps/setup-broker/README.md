@@ -45,6 +45,31 @@ Render terminal output:
 curl -fsSL http://localhost:3020/api/setup/sessions/SESSION_ID/terminal
 ```
 
+## Step Updates
+
+The broker exposes a Discourse-style generic step updater:
+
+```bash
+curl -fsSL -X POST \
+  -H 'content-type: application/json' \
+  -d '{"channel":"anky"}' \
+  http://localhost:3020/api/setup/sessions/SESSION_ID/steps/choose-community
+```
+
+The updater validates submitted values against the current server-owned setup
+schema. Only the current active step can be submitted. Steps that require real
+protocol proof still return explicit errors instead of faking progress:
+
+- `verify-farcaster` requires real Farcaster signature verification.
+- `prepare-signer` requires signer approval from the verified host FID.
+- `launch-appliance` requires broker tunnel provisioning and installer config
+  delivery.
+- `verify-publishing` requires a Hypersnap Lite/Farcaster publish probe.
+
+The browser setup page renders active schema fields as forms that post to the
+same updater model. This keeps the terminal and browser setup surfaces aligned
+with the same server-defined setup session.
+
 ## Channel Eligibility
 
 The broker has an optional channel eligibility provider. The public refresh

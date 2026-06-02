@@ -285,8 +285,9 @@ The broker is allowed to coordinate. It is not allowed to own every Arch.
 It creates setup sessions, serves schema JSON, serves terminal output, serves a
 focused browser setup page at `/setup`, renders unclaimed `*.arches.lat`
 hostnames as setup invitations, includes an optional Neynar channel eligibility
-adapter, and intentionally returns `501` for Farcaster verification instead of
-accepting a manual admin FID.
+adapter, includes a generic current-step updater for schema-backed browser/API
+submissions, and intentionally returns `501` for Farcaster verification instead
+of accepting a manual admin FID.
 
 `packages/setup-schema` now contains the first concrete version of this shape:
 renderer-neutral setup steps, fields, choices, completion state, submission
@@ -299,18 +300,20 @@ remains blocked until Farcaster publishing has been verified.
    `packages/setup-schema`).
 2. Add setup broker session API with in-memory storage for local development
    (started in `apps/setup-broker`).
-3. Add Farcaster QR verification and host FID derivation.
-4. Add Neynar channel lookup for eligible channels (adapter started in
+3. Add browser/API step updater for the current active setup step (started in
    `apps/setup-broker`).
-5. Add slug reservation for `*.arches.lat` (started with in-memory reservation
+4. Add Farcaster QR verification and host FID derivation.
+5. Add Neynar channel lookup for eligible channels (adapter started in
+   `apps/setup-broker`).
+6. Add slug reservation for `*.arches.lat` (started with in-memory reservation
    in `apps/setup-broker`).
-6. Move Cloudflare Tunnel provisioning behind the broker.
-7. Teach `scripts/install.sh` to call the broker when no flags are passed
+7. Move Cloudflare Tunnel provisioning behind the broker.
+8. Teach `scripts/install.sh` to call the broker when no flags are passed
    (started with the terminal session handoff).
-8. Add unclaimed-subdomain page and wildcard routing (started in
+9. Add unclaimed-subdomain page and wildcard routing (started in
    `apps/setup-broker`).
-9. Wire Hypersnap Lite publish probe and signer storage.
-10. Enable posting only when the publish contract is confirmed.
+10. Wire Hypersnap Lite publish probe and signer storage.
+11. Enable posting only when the publish contract is confirmed.
 
 ## Product Principle
 

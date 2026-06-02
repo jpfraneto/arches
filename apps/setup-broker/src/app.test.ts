@@ -192,6 +192,146 @@ describe("setup broker", () => {
     expect(body.session.steps[3].fields[1].value).toBe("anky.arches.lat");
   });
 
+  test("submits the current active setup step through the generic API updater", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({
+        hostFid: 18350,
+        signerApproved: true,
+        eligibleChannels: [
+          { slug: "anky", role: "lead" },
+          { slug: "builders", role: "moderator" },
+        ],
+      }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/steps/choose-community`,
+      {
+        method: "POST",
+        body: JSON.stringify({ channel: "builders" }),
+        headers: { "content-type": "application/json" },
+      },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.session.currentStepId).toBe("name-surface");
+    expect(body.session.steps[2].fields[0].value).toBe("builders");
+    expect(body.terminal).toContain("[>] Name Surface");
+  });
+
+  test("reserves the selected channel slug through the generic step updater", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({
+        hostFid: 18350,
+        signerApproved: true,
+        eligibleChannels: [{ slug: "anky", role: "lead" }],
+        selectedChannelSlug: "anky",
+      }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/steps/name-surface`,
+      {
+        method: "POST",
+        body: JSON.stringify({ slug: "anky", domain: "anky.arches.lat" }),
+        headers: { "content-type": "application/json" },
+      },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.session.currentStepId).toBe("choose-hosting");
+    expect(body.session.steps[3].fields[0].value).toBe("anky");
+    expect(body.session.steps[3].fields[1].value).toBe("anky.arches.lat");
+  });
+
+  test("rejects invalid posted hostnames before reserving a slug", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({
+        hostFid: 18350,
+        signerApproved: true,
+        eligibleChannels: [{ slug: "anky", role: "lead" }],
+        selectedChannelSlug: "anky",
+      }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const invalid = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/steps/name-surface`,
+      {
+        method: "POST",
+        body: JSON.stringify({ slug: "anky", domain: "not-arches.example" }),
+        headers: { "content-type": "application/json" },
+      },
+    );
+    const invalidBody = await invalid.json();
+
+    expect(invalid.status).toBe(400);
+    expect(invalidBody.message).toContain("default *.arches.lat hostnames");
+
+    const valid = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/steps/name-surface`,
+      {
+        method: "POST",
+        body: JSON.stringify({ slug: "anky", domain: "anky.arches.lat" }),
+        headers: { "content-type": "application/json" },
+      },
+    );
+
+    expect(valid.status).toBe(200);
+  });
+
+  test("rejects generic updates for steps that are not currently active", async () => {
+    const app = createSetupBrokerApp();
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/steps/choose-community`,
+      {
+        method: "POST",
+        body: JSON.stringify({ channel: "anky" }),
+        headers: { "content-type": "application/json" },
+      },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.message).toContain("Only the current active setup step");
+  });
+
+  test("keeps protocol-gated generic steps unimplemented instead of faking verification", async () => {
+    const app = createSetupBrokerApp();
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/steps/verify-farcaster`,
+      {
+        method: "POST",
+        body: JSON.stringify({ qr: "approved" }),
+        headers: { "content-type": "application/json" },
+      },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(501);
+    expect(body.message).toContain("verified Farcaster signature");
+  });
+
   test("prevents a second session from reserving the same slug", async () => {
     const app = createSetupBrokerApp({ allowDevStateUpdates: true });
     const reserve = async () => {
@@ -306,6 +446,61 @@ describe("setup broker", () => {
     expect(html).toContain("Choose Community");
     expect(html).toContain("/anky");
     expect(html).toContain("lead");
+  });
+
+  test("renders active schema fields as browser forms", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({
+        hostFid: 18350,
+        signerApproved: true,
+        eligibleChannels: [{ slug: "anky", role: "lead" }],
+      }),
+      headers: { "content-type": "application/json" },
+    });
+    const response = await app.request(`/setup/${created.session.sessionId}`);
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(html).toContain(
+      `action="/setup/${created.session.sessionId}/steps/choose-community"`,
+    );
+    expect(html).toContain('name="channel" value="anky"');
+    expect(html).toContain("<button type=\"submit\">Continue</button>");
+  });
+
+  test("accepts browser form submissions for active setup steps", async () => {
+    const app = createSetupBrokerApp({ allowDevStateUpdates: true });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({
+        hostFid: 18350,
+        signerApproved: true,
+        eligibleChannels: [{ slug: "anky", role: "lead" }],
+      }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await app.request(
+      `/setup/${created.session.sessionId}/steps/choose-community`,
+      {
+        method: "POST",
+        body: new URLSearchParams({ channel: "anky" }),
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        redirect: "manual",
+      },
+    );
+    const sessionResponse = await app.request(`/api/setup/sessions/${created.session.sessionId}`);
+    const body = await sessionResponse.json();
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(`/setup/${created.session.sessionId}`);
+    expect(body.session.currentStepId).toBe("name-surface");
   });
 
   test("keeps dev state mutation disabled by default", async () => {
