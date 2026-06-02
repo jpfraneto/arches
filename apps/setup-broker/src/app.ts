@@ -1,6 +1,10 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import {
+  createChannelEligibilityProvider,
+  type ChannelEligibilityProvider,
+} from "./channel-eligibility";
+import {
   buildSetupSession,
   renderTerminalSession,
   type SetupField,
@@ -17,6 +21,7 @@ type SessionRecord = {
 
 type BrokerOptions = {
   allowDevStateUpdates?: boolean;
+  channelEligibilityProvider?: ChannelEligibilityProvider;
   publicOrigin?: string;
 };
 
@@ -37,6 +42,8 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
   const app = new Hono();
   const publicOrigin = options.publicOrigin ?? "http://localhost:3020";
   const allowDevStateUpdates = options.allowDevStateUpdates ?? false;
+  const channelEligibilityProvider =
+    options.channelEligibilityProvider ?? createChannelEligibilityProvider({});
 
   app.use(
     "*",
@@ -115,6 +122,38 @@ export function createSetupBrokerApp(options: BrokerOptions = {}) {
       },
       501,
     );
+  });
+
+  app.post("/api/setup/sessions/:sessionId/channels/refresh", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const record = sessions.get(sessionId);
+    if (!record) return c.json({ error: "setup session not found" }, 404);
+
+    const hostFid = record.state.hostFid;
+    if (!hostFid) {
+      return c.json(
+        {
+          error: "farcaster verification required",
+          message:
+            "Channel eligibility can only be loaded after the setup broker derives a host FID from Farcaster verification.",
+        },
+        409,
+      );
+    }
+
+    const eligibleChannels = await channelEligibilityProvider.listEligibleChannels(hostFid);
+    const updatedState = {
+      ...record.state,
+      eligibleChannels,
+    };
+
+    sessions.set(sessionId, {
+      ...record,
+      state: updatedState,
+      updatedAt: new Date().toISOString(),
+    });
+
+    return c.json(sessionResponse(updatedState, publicOrigin));
   });
 
   app.put("/api/setup/sessions/:sessionId/dev-state", async (c) => {

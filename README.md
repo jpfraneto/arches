@@ -96,6 +96,17 @@ The setup broker also renders unclaimed `*.arches.lat` hostnames as creation
 invitations. Visiting an unclaimed Arch should point the host toward Farcaster
 verification rather than accepting a manual admin claim.
 
+The setup broker has an optional Neynar channel eligibility adapter:
+
+```bash
+ARCHES_CHANNEL_PROVIDER=neynar \
+NEYNAR_API_KEY=... \
+bun run src/index.ts
+```
+
+The adapter only loads channels after a setup session has a host FID. The real
+host FID still needs to come from Farcaster verification.
+
 Arches is the seed, not the host identity. Each Arch is held up by the person or
 community running that appliance. Any app/factory Farcaster credential used by
 Arches may only request signer approval during setup; it must not become the FID

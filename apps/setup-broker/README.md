@@ -45,6 +45,31 @@ Render terminal output:
 curl -fsSL http://localhost:3020/api/setup/sessions/SESSION_ID/terminal
 ```
 
+## Channel Eligibility
+
+The broker has an optional channel eligibility provider. The public refresh
+endpoint is gated on a session having a host FID:
+
+```bash
+curl -fsSL -X POST http://localhost:3020/api/setup/sessions/SESSION_ID/channels/refresh
+```
+
+Without a host FID, the endpoint returns `409`. The host FID must come from
+Farcaster verification in the real flow; local tests can use the dev-state route
+only when `ARCHES_SETUP_BROKER_DEV=1`.
+
+Enable the Neynar provider with:
+
+```bash
+ARCHES_CHANNEL_PROVIDER=neynar \
+NEYNAR_API_KEY=... \
+bun run src/index.ts
+```
+
+The adapter reads Neynar's current channel list endpoint,
+`GET https://api.neynar.com/v2/farcaster/channel/list/`, and maps channels where
+the host FID is `lead.fid` or appears in `moderator_fids`.
+
 For local tests only, `createSetupBrokerApp({ allowDevStateUpdates: true })`
 enables a dev-only state mutation endpoint. The runtime server only enables that
 endpoint when `ARCHES_SETUP_BROKER_DEV=1`.

@@ -61,6 +61,50 @@ describe("setup broker", () => {
     expect(body.message).toContain("Manual admin FID input is rejected.");
   });
 
+  test("requires host FID before refreshing eligible channels", async () => {
+    const app = createSetupBrokerApp();
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/channels/refresh`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.message).toContain("derives a host FID from Farcaster verification");
+  });
+
+  test("refreshes eligible channels after host FID exists", async () => {
+    const app = createSetupBrokerApp({
+      allowDevStateUpdates: true,
+      channelEligibilityProvider: {
+        async listEligibleChannels(fid) {
+          expect(fid).toBe(18350);
+          return [{ slug: "anky", role: "lead", name: "Anky" }];
+        },
+      },
+    });
+    const createResponse = await app.request("/api/setup/sessions", { method: "POST" });
+    const created = await createResponse.json();
+    await app.request(`/api/setup/sessions/${created.session.sessionId}/dev-state`, {
+      method: "PUT",
+      body: JSON.stringify({ hostFid: 18350, signerApproved: true }),
+      headers: { "content-type": "application/json" },
+    });
+    const response = await app.request(
+      `/api/setup/sessions/${created.session.sessionId}/channels/refresh`,
+      { method: "POST" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.session.currentStepId).toBe("choose-community");
+    expect(body.session.steps[2].fields[0].choices).toEqual([
+      { id: "anky", label: "/anky", description: "Anky (lead)", data: { role: "lead" } },
+    ]);
+  });
+
   test("redirects browser setup entry to a new session page", async () => {
     const app = createSetupBrokerApp();
     const response = await app.request("/setup", { redirect: "manual" });
