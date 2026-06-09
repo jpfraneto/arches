@@ -16,11 +16,21 @@ describe("arches web shell", () => {
     );
   });
 
-  test("locks the composer from the API publishing state", () => {
+  test("renders locked composer state when publishing is disabled", () => {
     expect(html).toContain("function setComposerAvailability()");
     expect(html).toContain("state.arch?.publishing?.farcaster?.enabled");
     expect(html).toContain('control.disabled = !enabled');
     expect(html).toContain('submit.textContent = "Farcaster publishing not connected"');
-    expect(html).toContain("Posting is disabled until this Arch can publish to Farcaster.");
+    expect(html).toContain("Arches will not create local-only fake casts");
+    expect(html).toContain("pass publishing verification to unlock the composer");
+  });
+
+  test("renders unlocked composer state when publishing is enabled", () => {
+    expect(html).toContain('submit.textContent = "Post to Farcaster"');
+    expect(html).toContain(
+      "Posting through this Arch. Casts stay Farcaster-native and appear in this scoped feed.",
+    );
+    expect(html).toContain("result.proof?.farcasterHash");
+    expect(html).toContain("No casts have been published through this Arch yet.");
   });
 });

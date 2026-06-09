@@ -322,10 +322,11 @@ bun run src/index.ts
 ```
 
 The provider calls `https://<arch-domain>/api/publishing/probe` and only marks
-publishing verified when the appliance returns confirmed Farcaster proof:
-`ok: true`, `protocol: "farcaster"`, `status: "confirmed"`, and a
-`farcasterHash`. The current API endpoint intentionally returns `501` until
-Hypersnap Lite publishing is wired.
+publishing verified when the appliance returns real Farcaster publishing proof.
+The API readiness probe checks the corrected boundary: Arch config, signer
+state, Arches-side signed-message construction, Hypersnap Lite `/v1/info`, and
+the signed-message submit path. The default appliance intentionally returns a
+locked response until a real signing primitive is configured.
 
 After publishing is verified, the setup schema renders `Unlock composer`.
 That action records `composer_unlocked` only when the setup session already has

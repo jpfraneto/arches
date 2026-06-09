@@ -22,7 +22,7 @@ community context.
 4. A setup broker verifies the Farcaster signature.
 5. The broker derives the host FID from the verified Farcaster account.
 6. The broker lists Farcaster channels this FID can host.
-7. The terminal asks the user which channel/community to launch.
+7. Setup asks the user which channel/community to launch.
 8. The broker reserves a slug and domain such as `anky.arches.lat`.
 9. The broker provisions a Cloudflare Tunnel and DNS route.
 10. The installer receives the verified config and tunnel token.
@@ -61,9 +61,9 @@ If someone visits an unclaimed `*.arches.lat` hostname, the router should serve
 a creation page for that subdomain. It should invite a verified Farcaster user
 to scan, prove they can host that community, and launch the appliance.
 
-## Current Shippable Primitive
+## Current Dev Primitive
 
-The repo now supports the runtime shape required by the target flow:
+The repo still supports explicit dev rendering of the appliance:
 
 ```bash
 curl -fsSL https://install.arches.lat | bash -s -- \
@@ -82,10 +82,11 @@ In `tunnel-local` mode, the generated Docker Compose file includes:
 
 - `arches-web`
 - `arches-api`
-- `postgres`
-- `redis`
 - `hypersnap-lite`
 - `cloudflared`
+
+It does not include Redis or Postgres in v0.1 because the current API does not
+connect to them yet.
 
 The `cloudflared` container connects outbound to Cloudflare using the tunnel
 token. The user does not need a public IP address, inbound firewall rule, router
@@ -153,11 +154,11 @@ This mode should be described honestly:
 
 ## Setup Broker Contract
 
-The missing production component is a setup broker. It should coordinate:
+The setup broker should coordinate:
 
 - install sessions
 - Farcaster QR/signature verification for the host FID
-- local signer-key approval
+- local signer-key approval and safe signer handoff to the generated appliance
 - Farcaster channel eligibility lookup
 - slug reservation
 - tunnel provisioning
@@ -165,8 +166,8 @@ The missing production component is a setup broker. It should coordinate:
 - tunnel revocation and recovery
 
 The broker should not own the Arch identity. The appliance host owns the local
-process and the signer that publishes to Farcaster. The installer should
-eventually call this broker when it receives no arguments. The current setup
+process and the signer that publishes to Farcaster. The current installer
+renders this setup-first broker when it receives no arguments. The current setup
 broker has a Farcaster verification provider boundary with a per-session
 nonce/domain challenge. It can verify SIWF messages through the official
 Farcaster auth client when `ARCHES_FARCASTER_VERIFIER=auth-client`, including
@@ -175,9 +176,11 @@ the default verifier still fails closed with `501`.
 
 It also has the first signer approval provider boundary. The broker can create
 a signer request URL and poll signer status, but the default signer provider
-fails closed. Signer private keys and mnemonic material must stay out of the
-broker; approved setup state may only carry non-secret signer metadata such as a
-public key.
+fails closed. Signer private keys and mnemonic material must stay out of setup
+audit state and the web container; approved setup state may only carry
+non-secret signer metadata such as a public key. The remaining production gap is
+the safe local signing primitive that turns this approval into signed Farcaster
+protobuf bytes inside the generated appliance.
 
 ## Broker Provisioning Scaffold
 
@@ -226,6 +229,7 @@ ARCH_SURFACE_PRESET=village
 ARCH_GRAMMAR_PRESET=open-casts
 ARCH_THEME_PRESET=daylight
 ARCH_SIGNER_PUBLIC_KEY=0x...
+FARCASTER_NETWORK=mainnet
 ```
 
 For `tunnel-local`, this export requires the Cloudflare Tunnel route to be

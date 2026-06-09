@@ -7,11 +7,15 @@ INSTALL_MODE="vps"
 ARCH_ADMIN_FID=""
 ARCH_SUPPORT_EMAIL=""
 CLOUDFLARE_TUNNEL_TOKEN="${CLOUDFLARE_TUNNEL_TOKEN:-}"
+ARCHES_SETUP_BROKER_URL="${ARCHES_SETUP_BROKER_URL:-}"
 ASSUME_YES=0
+ORIGINAL_ARG_COUNT=$#
 
 usage() {
   cat <<'USAGE'
 Usage:
+  bash scripts/install.sh
+
   bash scripts/install.sh \
     --arch anky \
     --domain anky.arches.lat \
@@ -22,6 +26,9 @@ Usage:
     [--yes]
 
 Options:
+  With no options, start a zero-info setup session through the Arches setup
+  broker. Set ARCHES_SETUP_BROKER_URL to use a local broker while testing.
+
   --arch        Lowercase URL-safe community slug.
   --domain      Hostname for this Arch. Defaults to localhost in --mode local.
   --mode        Install mode: local, tunnel-local, vps, or existing-proxy.
@@ -43,6 +50,105 @@ need_value() {
   [ $# -gt 1 ] || die "$1 requires a value"
   [ -n "$2" ] || die "$1 requires a non-empty value"
 }
+
+start_zero_info_setup() {
+  local install_dir env_file compose_file compose_cmd=""
+
+  if [ "$(id -u)" = "0" ]; then
+    install_dir="${ARCHES_INSTALL_DIR:-/opt/arches}"
+  else
+    install_dir="${ARCHES_INSTALL_DIR:-${HOME:?}/.arches}"
+  fi
+
+  mkdir -p "$install_dir"
+  env_file="$install_dir/.env"
+  compose_file="$install_dir/docker-compose.yml"
+
+  if [ -e "$env_file" ]; then
+    die "$env_file already exists; move it aside before generating a new setup appliance"
+  fi
+
+  touch "$env_file"
+  chmod 600 "$env_file"
+
+  cat > "$env_file" <<EOF
+ARCHES_MODE=setup
+ARCHES_SETUP_BROKER_IMAGE=ghcr.io/jpfraneto/arches-setup-broker:latest
+ARCHES_SETUP_PORT=3020
+ARCHES_SETUP_PUBLIC_ORIGIN=http://localhost:3020
+
+# Provider boundaries. Defaults fail closed until configured.
+ARCHES_FARCASTER_VERIFIER=
+ARCHES_SIGNER_PROVIDER=
+ARCHES_CHANNEL_PROVIDER=
+ARCHES_TUNNEL_PROVIDER=
+ARCHES_APPLIANCE_LAUNCH_PROVIDER=
+ARCHES_PUBLISHING_VERIFICATION_PROVIDER=
+EOF
+
+  cat > "$compose_file" <<'EOF_COMPOSE'
+services:
+  arches-setup-broker:
+    image: ${ARCHES_SETUP_BROKER_IMAGE:-ghcr.io/jpfraneto/arches-setup-broker:latest}
+    restart: unless-stopped
+    environment:
+      PORT: "3020"
+      ARCHES_SETUP_PUBLIC_ORIGIN: ${ARCHES_SETUP_PUBLIC_ORIGIN:-http://localhost:3020}
+      ARCHES_SETUP_STORE_FILE: /var/lib/arches/setup-store.json
+      ARCHES_FARCASTER_VERIFIER: ${ARCHES_FARCASTER_VERIFIER}
+      ARCHES_SIGNER_PROVIDER: ${ARCHES_SIGNER_PROVIDER}
+      ARCHES_CHANNEL_PROVIDER: ${ARCHES_CHANNEL_PROVIDER}
+      ARCHES_TUNNEL_PROVIDER: ${ARCHES_TUNNEL_PROVIDER}
+      ARCHES_APPLIANCE_LAUNCH_PROVIDER: ${ARCHES_APPLIANCE_LAUNCH_PROVIDER}
+      ARCHES_PUBLISHING_VERIFICATION_PROVIDER: ${ARCHES_PUBLISHING_VERIFICATION_PROVIDER}
+    ports:
+      - "127.0.0.1:${ARCHES_SETUP_PORT:-3020}:3020"
+    volumes:
+      - setup_data:/var/lib/arches
+
+volumes:
+  setup_data:
+EOF_COMPOSE
+
+  if command -v docker >/dev/null 2>&1; then
+    if docker compose version >/dev/null 2>&1; then
+      compose_cmd="docker compose"
+    elif command -v docker-compose >/dev/null 2>&1; then
+      compose_cmd="docker-compose"
+    fi
+  fi
+
+  cat <<EOF
+Arches setup appliance files generated in $install_dir
+
+Generated:
+  $env_file
+  $compose_file
+
+Next steps:
+  1. Review $env_file.
+  2. Start setup when ready:
+       cd "$install_dir" && ${compose_cmd:-docker compose} up -d
+  3. Open setup:
+       http://localhost:3020/setup
+
+Setup flow:
+  Run one command, scan with Farcaster, approve a publishing signer, choose a
+  channel you own or moderate, then let Arches render the Arch appliance config.
+
+Safe default: services were not started. Re-run with --yes to start automatically.
+EOF
+
+  if [ "$ASSUME_YES" = "1" ]; then
+    [ -n "$compose_cmd" ] || die "Docker Compose is required for --yes"
+    (cd "$install_dir" && $compose_cmd up -d)
+  fi
+}
+
+if [ "$ORIGINAL_ARG_COUNT" = "0" ]; then
+  start_zero_info_setup
+  exit 0
+fi
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -203,20 +309,31 @@ __CLOUDFLARED_SERVICE__
   arches-api:
     image: ${ARCHES_API_IMAGE:-ghcr.io/jpfraneto/arches-api:latest}
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
       PORT: "3000"
-      DATABASE_URL: postgres://arches:${POSTGRES_PASSWORD}@postgres:5432/arches
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
-      HYPERSNAP_LITE_URL: http://hypersnap-lite:3000
+      ARCH_SLUG: ${ARCH_SLUG}
+      ARCH_DOMAIN: ${ARCH_DOMAIN}
+      ARCH_ADMIN_FID: ${ARCH_ADMIN_FID}
+      ARCH_SUPPORT_EMAIL: ${ARCH_SUPPORT_EMAIL}
+      ARCH_SURFACE_PRESET: ${ARCH_SURFACE_PRESET}
+      ARCH_GRAMMAR_PRESET: ${ARCH_GRAMMAR_PRESET}
+      ARCH_THEME_PRESET: ${ARCH_THEME_PRESET}
+      ARCH_SURFACE_TITLE: ${ARCH_SURFACE_TITLE}
+      ARCH_PROVENANCE_LABEL: ${ARCH_PROVENANCE_LABEL}
+      ARCH_CHANNEL_ID: ${ARCH_CHANNEL_ID}
+      ARCH_CHANNEL_URL: ${ARCH_CHANNEL_URL}
+      ARCH_SIGNER_PUBLIC_KEY: ${ARCH_SIGNER_PUBLIC_KEY}
+      ARCH_SIGNER_PRIVATE_KEY: ${ARCH_SIGNER_PRIVATE_KEY}
+      FARCASTER_NETWORK: ${FARCASTER_NETWORK:-mainnet}
+      HYPERSNAP_LITE_URL: http://hypersnap-lite:3381
+      HYPERSNAP_LITE_HEALTH_PATH: ${HYPERSNAP_LITE_HEALTH_PATH}
+      ARCHES_EXPERIMENTAL_PAYMENTS_ENABLED: ${ARCHES_EXPERIMENTAL_PAYMENTS_ENABLED}
+      ARCHES_COIN_SYMBOL: ${ARCHES_COIN_SYMBOL}
+      ARCHES_COIN_CONTRACT_ADDRESS: ${ARCHES_COIN_CONTRACT_ADDRESS}
+      ARCHES_COIN_DISCOUNT_BPS: ${ARCHES_COIN_DISCOUNT_BPS}
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
       hypersnap-lite:
-        condition: service_started
+        condition: service_healthy
     expose:
       - "3000"
 __ARCHES_API_PORTS__
@@ -226,8 +343,6 @@ __ARCHES_API_PORTS__
   arches-web:
     image: ${ARCHES_WEB_IMAGE:-ghcr.io/jpfraneto/arches-web:latest}
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
       PORT: "3000"
       API_ORIGIN: http://arches-api:3000
@@ -239,52 +354,29 @@ __ARCHES_WEB_PORTS__
     networks:
       - arches
 
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: arches
-      POSTGRES_USER: arches
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U arches -d arches"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - arches
-
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
-    volumes:
-      - redis_data:/data
-    networks:
-      - arches
-
   hypersnap-lite:
     image: ${HYPERSNAP_LITE_IMAGE:-ghcr.io/jpfraneto/hypersnap-lite:latest}
     platform: ${HYPERSNAP_LITE_PLATFORM:-linux/amd64}
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
-      PORT: "3000"
       ARCH_SLUG: ${ARCH_SLUG}
       ARCH_DOMAIN: ${ARCH_DOMAIN}
     expose:
-      - "3000"
+      - "3381"
+      - "3382/udp"
+      - "3383"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3381/v1/info"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     networks:
       - arches
 
 volumes:
   caddy_data:
   caddy_config:
-  postgres_data:
-  redis_data:
 
 networks:
   arches:
@@ -321,22 +413,6 @@ else
 fi
 
 INSTALL_DIR="${ARCHES_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
-
-random_secret() {
-  local secret
-
-  if command -v openssl >/dev/null 2>&1; then
-    secret="$(openssl rand -hex 24)"
-    printf '%s\n' "${secret:0:32}"
-  elif [ -r /dev/urandom ] && command -v od >/dev/null 2>&1; then
-    secret="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
-    printf '%s\n' "${secret:0:32}"
-  elif command -v sha256sum >/dev/null 2>&1; then
-    printf '%s' "$(date +%s%N)-$$-$RANDOM" | sha256sum | awk '{print substr($1,1,32)}'
-  else
-    printf '%s' "$(date +%s)-$$-$RANDOM" | cksum | awk '{print $1}'
-  fi
-}
 
 escape_sed_replacement() {
   printf '%s' "$1" | sed 's/[\/&]/\\&/g'
@@ -435,8 +511,16 @@ if [ -e "$ENV_FILE" ]; then
   die "$ENV_FILE already exists; move it aside before generating a new appliance"
 fi
 
-POSTGRES_PASSWORD="$(random_secret)"
-REDIS_PASSWORD="$(random_secret)"
+touch "$ENV_FILE"
+chmod 600 "$ENV_FILE"
+
+ARCH_SURFACE_PRESET="village"
+ARCH_GRAMMAR_PRESET="open-casts"
+ARCH_THEME_PRESET="daylight"
+ARCH_SURFACE_TITLE="/$ARCH_SLUG"
+ARCH_PROVENANCE_LABEL="posted via $ARCH_SLUG"
+ARCH_CHANNEL_ID="$ARCH_SLUG"
+ARCH_CHANNEL_URL="https://warpcast.com/~/channel/$ARCH_SLUG"
 
 cat > "$ENV_FILE" <<EOF
 ARCH_SLUG=$ARCH_SLUG
@@ -444,16 +528,32 @@ ARCH_DOMAIN=$ARCH_DOMAIN
 ARCHES_MODE=$INSTALL_MODE
 ARCH_ADMIN_FID=$ARCH_ADMIN_FID
 ARCH_SUPPORT_EMAIL=$ARCH_SUPPORT_EMAIL
+ARCH_SURFACE_PRESET=$ARCH_SURFACE_PRESET
+ARCH_GRAMMAR_PRESET=$ARCH_GRAMMAR_PRESET
+ARCH_THEME_PRESET=$ARCH_THEME_PRESET
+ARCH_SURFACE_TITLE=$ARCH_SURFACE_TITLE
+ARCH_PROVENANCE_LABEL=$ARCH_PROVENANCE_LABEL
+ARCH_CHANNEL_ID=$ARCH_CHANNEL_ID
+ARCH_CHANNEL_URL=$ARCH_CHANNEL_URL
+ARCH_SIGNER_PUBLIC_KEY=
+FARCASTER_NETWORK=mainnet
+
+# Runtime images
 ARCHES_API_IMAGE=ghcr.io/jpfraneto/arches-api:latest
 ARCHES_WEB_IMAGE=ghcr.io/jpfraneto/arches-web:latest
 HYPERSNAP_LITE_IMAGE=ghcr.io/jpfraneto/hypersnap-lite:latest
 HYPERSNAP_LITE_PLATFORM=linux/amd64
+HYPERSNAP_LITE_URL=http://hypersnap-lite:3381
+HYPERSNAP_LITE_HEALTH_PATH=/v1/info
+
+# Local port bindings
 ARCHES_HOST_BIND=127.0.0.1
 ARCHES_WEB_PORT=3000
 ARCHES_API_PORT=3001
+
+# Secret runtime credentials
+ARCH_SIGNER_PRIVATE_KEY=
 CLOUDFLARE_TUNNEL_TOKEN=$CLOUDFLARE_TUNNEL_TOKEN
-POSTGRES_PASSWORD=$POSTGRES_PASSWORD
-REDIS_PASSWORD=$REDIS_PASSWORD
 
 # Experimental only. Disabled by default and not part of the core v0 install path.
 ARCHES_EXPERIMENTAL_PAYMENTS_ENABLED=false

@@ -8,6 +8,8 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@farcaster/core": "0.18.5",
+    "@noble/curves": "^1.9.7",
     "hono": "^4.12.23"
   },
   "devDependencies": {

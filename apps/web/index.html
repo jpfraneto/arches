@@ -213,8 +213,9 @@
       <section class="notice" aria-labelledby="status-title">
         <strong id="status-title">Live local Arch</strong>
         <p>
-          Farcaster publishing is not connected yet. Arches will not accept
-          local-only casts because the Arch feed must map 1:1 to Farcaster data.
+          Publishing is not wired yet. Arches will not create local-only fake
+          casts. Connect Hypersnap Lite and pass publishing verification to
+          unlock the composer.
         </p>
       </section>
 
@@ -343,7 +344,7 @@
 
       function renderFeed() {
         if (state.casts.length === 0) {
-          feed.innerHTML = '<p class="empty">No Farcaster-confirmed casts through this Arch yet.</p>';
+          feed.innerHTML = '<p class="empty">No casts have been published through this Arch yet.</p>';
           return;
         }
 
@@ -358,9 +359,10 @@
             const meta = document.createElement("div");
             meta.className = "meta";
             meta.append(
-              `posted via this Arch`,
+              cast.provenanceLabel ?? `posted via this Arch`,
               cast.fid ? `fid: ${cast.fid}` : "fid: unavailable",
               `status: ${cast.status}`,
+              cast.farcasterHash ? `hash: ${cast.farcasterHash}` : "hash: unavailable",
               new Date(cast.createdAt).toLocaleString(),
             );
 
@@ -406,15 +408,18 @@
             body: JSON.stringify(payload),
           });
 
-          if (!response.ok) throw new Error("Post failed");
-          const result = await response.json();
+          const result = await response.json().catch(() => null);
+          if (!response.ok) {
+            throw new Error(result?.message ?? "Post failed");
+          }
           form.reset();
           await loadFeed();
           composerStatus.className = "composer-status success";
-          composerStatus.textContent = `Published through ${state.arch?.slug ?? "this Arch"} (${result.cast.status}).`;
+          composerStatus.textContent = `Published through ${state.arch?.slug ?? "this Arch"}: ${result.proof?.farcasterHash ?? result.cast?.farcasterHash}.`;
         } catch (error) {
           composerStatus.className = "composer-status error";
-          composerStatus.textContent = "Could not post the cast.";
+          composerStatus.textContent =
+            error instanceof Error ? error.message : "Could not post the cast.";
         } finally {
           submit.disabled = false;
         }
@@ -444,14 +449,16 @@
           composerStatus.className = "composer-status error";
           composerStatus.textContent =
             state.arch?.publishing?.farcaster?.message ??
-            "Posting is disabled until Farcaster publishing is connected.";
+            "Publishing is not wired yet. Arches will not create local-only fake casts. Connect Hypersnap Lite and pass publishing verification to unlock the composer.";
           return;
         }
 
         submit.classList.remove("blocked-button");
         submit.textContent = "Post to Farcaster";
         composerStatus.className = "composer-status";
-        composerStatus.textContent = "";
+        composerStatus.textContent =
+          state.arch?.publishing?.farcaster?.message ??
+          "Posting through this Arch. Casts stay Farcaster-native and appear in this scoped feed.";
       }
 
       Promise.all([loadArch(), loadFeed()]).catch(() => {

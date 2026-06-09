@@ -5,20 +5,31 @@ __CLOUDFLARED_SERVICE__
   arches-api:
     image: ${ARCHES_API_IMAGE:-ghcr.io/jpfraneto/arches-api:latest}
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
       PORT: "3000"
-      DATABASE_URL: postgres://arches:${POSTGRES_PASSWORD}@postgres:5432/arches
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
-      HYPERSNAP_LITE_URL: http://hypersnap-lite:3000
+      ARCH_SLUG: ${ARCH_SLUG}
+      ARCH_DOMAIN: ${ARCH_DOMAIN}
+      ARCH_ADMIN_FID: ${ARCH_ADMIN_FID}
+      ARCH_SUPPORT_EMAIL: ${ARCH_SUPPORT_EMAIL}
+      ARCH_SURFACE_PRESET: ${ARCH_SURFACE_PRESET}
+      ARCH_GRAMMAR_PRESET: ${ARCH_GRAMMAR_PRESET}
+      ARCH_THEME_PRESET: ${ARCH_THEME_PRESET}
+      ARCH_SURFACE_TITLE: ${ARCH_SURFACE_TITLE}
+      ARCH_PROVENANCE_LABEL: ${ARCH_PROVENANCE_LABEL}
+      ARCH_CHANNEL_ID: ${ARCH_CHANNEL_ID}
+      ARCH_CHANNEL_URL: ${ARCH_CHANNEL_URL}
+      ARCH_SIGNER_PUBLIC_KEY: ${ARCH_SIGNER_PUBLIC_KEY}
+      ARCH_SIGNER_PRIVATE_KEY: ${ARCH_SIGNER_PRIVATE_KEY}
+      FARCASTER_NETWORK: ${FARCASTER_NETWORK:-mainnet}
+      HYPERSNAP_LITE_URL: http://hypersnap-lite:3381
+      HYPERSNAP_LITE_HEALTH_PATH: ${HYPERSNAP_LITE_HEALTH_PATH}
+      ARCHES_EXPERIMENTAL_PAYMENTS_ENABLED: ${ARCHES_EXPERIMENTAL_PAYMENTS_ENABLED}
+      ARCHES_COIN_SYMBOL: ${ARCHES_COIN_SYMBOL}
+      ARCHES_COIN_CONTRACT_ADDRESS: ${ARCHES_COIN_CONTRACT_ADDRESS}
+      ARCHES_COIN_DISCOUNT_BPS: ${ARCHES_COIN_DISCOUNT_BPS}
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
       hypersnap-lite:
-        condition: service_started
+        condition: service_healthy
     expose:
       - "3000"
 __ARCHES_API_PORTS__
@@ -28,8 +39,6 @@ __ARCHES_API_PORTS__
   arches-web:
     image: ${ARCHES_WEB_IMAGE:-ghcr.io/jpfraneto/arches-web:latest}
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
       PORT: "3000"
       API_ORIGIN: http://arches-api:3000
@@ -41,52 +50,29 @@ __ARCHES_WEB_PORTS__
     networks:
       - arches
 
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: arches
-      POSTGRES_USER: arches
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U arches -d arches"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - arches
-
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
-    volumes:
-      - redis_data:/data
-    networks:
-      - arches
-
   hypersnap-lite:
     image: ${HYPERSNAP_LITE_IMAGE:-ghcr.io/jpfraneto/hypersnap-lite:latest}
     platform: ${HYPERSNAP_LITE_PLATFORM:-linux/amd64}
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
-      PORT: "3000"
       ARCH_SLUG: ${ARCH_SLUG}
       ARCH_DOMAIN: ${ARCH_DOMAIN}
     expose:
-      - "3000"
+      - "3381"
+      - "3382/udp"
+      - "3383"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3381/v1/info"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     networks:
       - arches
 
 volumes:
   caddy_data:
   caddy_config:
-  postgres_data:
-  redis_data:
 
 networks:
   arches:

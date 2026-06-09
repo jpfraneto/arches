@@ -107,6 +107,8 @@ export function buildArchConfigSnapshot(state: SetupState): ArchConfigResult {
   const env: Record<string, string> = {
     ARCH_SLUG: state.reservedSlug,
     ARCH_DOMAIN: state.domain,
+    ARCH_CHANNEL_ID: state.selectedChannelSlug,
+    ARCH_CHANNEL_URL: `https://warpcast.com/~/channel/${state.selectedChannelSlug}`,
     ARCHES_MODE: state.hostingMode,
     ARCH_ADMIN_FID: String(state.hostFid),
     ARCH_SUPPORT_EMAIL: supportEmail,
@@ -115,6 +117,7 @@ export function buildArchConfigSnapshot(state: SetupState): ArchConfigResult {
     ARCH_THEME_PRESET: themePreset,
     ARCH_SURFACE_TITLE: state.surfaceTitle,
     ARCH_PROVENANCE_LABEL: state.provenanceLabel,
+    FARCASTER_NETWORK: "mainnet",
     ARCHES_PUBLISHING_ENABLED: "false",
     ARCHES_FARCASTER_PUBLISHING_STATUS: "not_implemented",
   };

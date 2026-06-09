@@ -19,8 +19,13 @@ jobs:
         include:
           - image: ghcr.io/jpfraneto/arches-api
             context: apps/api
+            file: Dockerfile
           - image: ghcr.io/jpfraneto/arches-web
             context: apps/web
+            file: Dockerfile
+          - image: ghcr.io/jpfraneto/arches-setup-broker
+            context: .
+            file: apps/setup-broker/Dockerfile
 
     steps:
       - name: Check out repository
@@ -40,6 +45,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ matrix.image }}:latest

@@ -18,7 +18,7 @@
       </a>
       <nav class="nav" aria-label="Primary">
         <a href="#generator">Install</a>
-        <a href="#model">Model</a>
+        <a href="#model">Boundary</a>
         <a href="./install">Script</a>
       </nav>
     </header>
@@ -26,16 +26,18 @@
     <main>
       <section class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Community Farcaster clients</p>
-          <h1>Arches lets any community create its own Farcaster client.</h1>
+          <p class="eyebrow">Many clients. One Farcaster.</p>
+          <h1>Your channel is not just a tag. It can have its own client.</h1>
           <p class="lede">
-            An Arch is a custom social surface for one community, with its own
-            domain, feed, interface, grammar, and provenance.
+            Run one command, scan with Farcaster, choose the channel you own,
+            and Arches creates a local client for it. Same Farcaster identity.
+            Same protocol. A surface shaped by the community.
           </p>
           <div class="hero-actions">
-            <a class="button primary" href="#generator">Generate install command</a>
+            <a class="button primary" href="#generator">Install</a>
             <a class="button secondary" href="./install">View installer script</a>
           </div>
+          <pre class="hero-command"><code>curl -fsSL https://install.arches.lat | bash</code></pre>
         </div>
 
         <div class="appliance-map" aria-label="Arches appliance model">
@@ -62,29 +64,30 @@
 
       <section id="model" class="model-section">
         <div class="section-heading">
-          <p class="eyebrow">Layer model</p>
-          <h2>Small surface, clear boundary.</h2>
+          <p class="eyebrow">Open protocols need many doors.</p>
+          <h2>Channels need surfaces.</h2>
         </div>
         <div class="principles" aria-label="Arches product model">
           <article>
-            <h3>Hypersnap Lite is the write engine.</h3>
+            <h3>No new graph.</h3>
             <p>
-              Arches consumes Hypersnap Lite through its Docker image and config
-              contract.
+              Arches does not create a replacement Farcaster network or global
+              indexer. Each Arch feed is scoped to casts created through that
+              Arch.
             </p>
           </article>
           <article>
-            <h3>Arches is the factory.</h3>
+            <h3>No new account system.</h3>
             <p>
-              The installer generates the appliance files, domain wiring, API,
-              web, feed, and admin scaffold.
+              Operators and members keep Farcaster identity. The local surface
+              changes, not the protocol identity layer.
             </p>
           </article>
           <article>
-            <h3>Farcaster is the protocol.</h3>
+            <h3>No fake casts.</h3>
             <p>
-              Arches does not become a global Farcaster indexer. Each Arch feed
-              is scoped to casts created through that Arch.
+              Composer unlock requires real Farcaster publishing. Arches never
+              makes local data look like protocol data.
             </p>
           </article>
         </div>
@@ -93,7 +96,11 @@
       <section id="generator" class="generator-section">
         <div class="section-heading">
           <p class="eyebrow">Installer</p>
-          <h2>Generate the command for your Arch.</h2>
+          <h2>One command opens setup.</h2>
+          <p>
+            The normal path asks for nothing up front. Manual fields below are
+            for local dev appliances.
+          </p>
         </div>
 
         <div class="generator">

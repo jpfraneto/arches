@@ -7,6 +7,9 @@ The composer is gated by `GET /api/arch`. If
 controls and displays the API-provided publishing message. This mirrors the
 setup rule: local-only casts are not valid Arch data.
 
+When publishing is enabled, a successful post renders the returned Farcaster
+hash and refreshes the scoped feed.
+
 Run locally:
 
 ```bash

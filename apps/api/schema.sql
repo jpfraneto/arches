@@ -7,7 +7,7 @@ CREATE TABLE arch_casts (
   username TEXT,
   parent_id UUID REFERENCES arch_casts(id),
   farcaster_hash TEXT,
-  status TEXT NOT NULL CHECK (status IN ('local', 'submitted', 'confirmed', 'failed')),
+  status TEXT NOT NULL CHECK (status IN ('submitted', 'confirmed', 'failed')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

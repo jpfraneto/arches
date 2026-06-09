@@ -58,6 +58,8 @@ describe("arch config snapshot", () => {
       env: {
         ARCH_SLUG: "anky",
         ARCH_DOMAIN: "anky.arches.lat",
+        ARCH_CHANNEL_ID: "anky",
+        ARCH_CHANNEL_URL: "https://warpcast.com/~/channel/anky",
         ARCHES_MODE: "tunnel-local",
         ARCH_ADMIN_FID: "18350",
         ARCH_SUPPORT_EMAIL: "support@arches.lat",
@@ -67,6 +69,7 @@ describe("arch config snapshot", () => {
         ARCH_THEME_PRESET: "high-contrast",
         ARCH_SURFACE_TITLE: "/anky",
         ARCH_PROVENANCE_LABEL: "posted via anky",
+        FARCASTER_NETWORK: "mainnet",
         ARCHES_PUBLISHING_ENABLED: "false",
         ARCHES_FARCASTER_PUBLISHING_STATUS: "not_implemented",
         CLOUDFLARE_TUNNEL_ID: "tunnel_123",
